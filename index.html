@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.anthropic.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Food tracker</title>
+<meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Jedzenie">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <button type="button" class="icon" id="prev" aria-label="Poprzedni dzień">‹</button>
+  <button type="button" class="date" id="today" aria-label="Wróć do dziś">
+    <span id="dlabel">Dziś</span><small id="dsub"></small>
+  </button>
+  <button type="button" class="icon" id="next" aria-label="Następny dzień">›</button>
+  <button type="button" class="icon gear" id="gear" aria-label="Ustawienia">⋯</button>
+</header>
+
+<main>
+  <section class="card summary" aria-live="polite">
+    <div class="kcal"><b id="kcal">0</b> <span id="kcalt"></span></div>
+    <div class="bars" id="bars"></div>
+  </section>
+
+  <div class="seg" role="radiogroup" aria-label="Plan dnia" id="seg">
+    <button type="button" role="radio" data-plan="A">Dzień A</button>
+    <button type="button" role="radio" data-plan="B">Dzień B</button>
+    <button type="button" role="radio" data-plan="free">Własny</button>
+  </div>
+
+  <section id="meals"></section>
+
+  <section class="extras">
+    <h2>Dodatkowe <span id="xk"></span></h2>
+    <ul id="items" class="rows"></ul>
+    <p class="empty" id="noitems">Opisz poniżej, co zjadłeś poza planem, albo dodaj produkt ręcznie.</p>
+  </section>
+</main>
+
+<form class="composer" id="composer">
+  <button type="button" class="icon plus" id="manualbtn" aria-label="Dodaj ręcznie">+</button>
+  <textarea id="q" rows="1" enterkeyhint="send" placeholder="Co zjadłeś? np. 2 jajka" aria-label="Co zjadłeś"></textarea>
+  <button type="submit" class="primary" id="ask">Policz</button>
+</form>
+<div class="status" id="status" hidden><span class="spin"></span><span id="statustext">Szukam wartości w sieci…</span><button type="button" id="cancel">Przerwij</button></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<dialog id="preview" class="sheet">
+  <form method="dialog">
+    <h2>Sprawdź i dodaj</h2>
+    <ul id="pitems" class="rows"></ul>
+    <label class="check"><input type="checkbox" id="psave" checked> Zapamiętaj produkty na następny raz</label>
+    <div class="actions">
+      <button value="cancel">Anuluj</button>
+      <button value="ok" class="primary" id="padd">Dodaj</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="manual" class="sheet">
+  <form method="dialog" id="mform">
+    <h2>Dodaj ręcznie</h2>
+    <label>Z moich produktów
+      <select id="mlib"><option value="">— wpisz nowy —</option></select>
+    </label>
+    <label>Nazwa <input id="mn" required autocomplete="off"></label>
+    <div class="grid">
+      <label>Zjedzone, g <input id="mg" type="number" inputmode="decimal" min="0" step="any" required></label>
+      <label>kcal / 100 g <input id="mk" type="number" inputmode="decimal" min="0" step="any" required></label>
+      <label>Białko / 100 g <input id="mp" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Tłuszcz / 100 g <input id="mf" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Nasycone / 100 g <input id="ms" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Błonnik / 100 g <input id="mb" type="number" inputmode="decimal" min="0" step="any"></label>
+    </div>
+    <p class="hint">Gdy znasz tylko sumę dania (np. z menu restauracji), wpisz 100 g i sumy w polach „/ 100 g”.</p>
+    <label class="check"><input type="checkbox" id="mvf"> Warzywa lub owoce</label>
+    <label class="check"><input type="checkbox" id="msave" checked> Zapamiętaj produkt</label>
+    <div class="actions">
+      <button value="cancel" formnovalidate>Anuluj</button>
+      <button value="ok" class="primary">Dodaj</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings" class="sheet">
+  <form method="dialog">
+    <h2>Ustawienia</h2>
+    <p class="hint" id="snote" hidden></p>
+    <label>Klucz API Anthropic
+      <input id="skey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+    </label>
+    <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków (konsola Anthropic → Workspaces → Limits).</p>
+    <label>Model <select id="smodel"></select></label>
+    <div class="actions wrap">
+      <button type="button" id="sexport">Eksportuj dane</button>
+      <button type="button" id="simport">Importuj dane</button>
+      <input type="file" id="sfile" accept="application/json,.json" hidden>
+    </div>
+    <p class="hint">Dane są zapisane w pamięci tej aplikacji na telefonie. Usunięcie ikony z ekranu głównego je kasuje, więc co jakiś czas zrób eksport do Plików.</p>
+    <details>
+      <summary>Moje produkty</summary>
+      <ul id="slib" class="rows small"></ul>
+    </details>
+    <div class="actions">
+      <button value="cancel">Zamknij</button>
+      <button value="ok" class="primary">Zapisz</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>
