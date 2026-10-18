@@ -35,9 +35,9 @@
   </section>
 
   <div class="seg" role="radiogroup" aria-label="Plan dnia" id="seg">
+    <button type="button" role="radio" data-plan="free">Własny</button>
     <button type="button" role="radio" data-plan="A">Dzień A</button>
     <button type="button" role="radio" data-plan="B">Dzień B</button>
-    <button type="button" role="radio" data-plan="free">Własny</button>
   </div>
 
   <section id="meals"></section>
@@ -65,6 +65,18 @@
     <div class="actions">
       <button value="cancel">Anuluj</button>
       <button value="ok" class="primary" id="padd">Dodaj</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="match" class="sheet">
+  <form method="dialog">
+    <h2>Czy chodzi o…</h2>
+    <p class="hint">Te produkty są w Twojej bazie, więc nie trzeba pytać AI. Wybierz „szukaj w sieci”, jeśli to coś innego.</p>
+    <ul id="mitems" class="rows"></ul>
+    <div class="actions">
+      <button value="cancel">Anuluj</button>
+      <button value="ok" class="primary" id="mok">Dodaj</button>
     </div>
   </form>
 </dialog>
@@ -103,6 +115,7 @@
     </label>
     <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków (konsola Anthropic → Workspaces → Limits).</p>
     <label>Model <select id="smodel"></select></label>
+    <p class="hint" id="scost"></p>
     <div class="actions wrap">
       <button type="button" id="sexport">Eksportuj dane</button>
       <button type="button" id="simport">Importuj dane</button>

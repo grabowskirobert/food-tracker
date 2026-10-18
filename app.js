@@ -1,5 +1,6 @@
 import { FOODS, PLANS, TARGETS } from './data.js';
 import { analyze, friendlyError, MODELS } from './llm.js';
+import { matchText, gramsFor, aliasOf } from './match.js';
 
 const $ = (s) => document.querySelector(s);
 const NUT = ['k', 'p', 'f', 's', 'b'];
@@ -23,11 +24,11 @@ let cur = noon(new Date());
 let day;
 
 function loadDay() {
-  day = store.get('day:' + keyOf(cur), null) || { plan: store.get('lastPlan', 'A'), over: {}, skip: {}, items: [] };
+  // Days start as "Własny"; A and B stay one tap away as a template.
+  day = store.get('day:' + keyOf(cur), null) || { plan: 'free', over: {}, skip: {}, items: [] };
 }
 function saveDay() {
   store.set('day:' + keyOf(cur), day);
-  store.set('lastPlan', day.plan);
 }
 
 function customFoods() { return store.get('foods', {}); }
@@ -36,10 +37,20 @@ function library() {
   for (const f of Object.values(FOODS)) lib[f.n.toLowerCase()] = f;
   return Object.assign(lib, customFoods());
 }
-function remember(f) {
+// Saves a product (or updates one picked from the library), keeping the last portion and the
+// words the user described it with, so the next description matches it locally.
+function remember(f, alias) {
   const foods = customFoods();
-  const { n, k, p, f: fat, s, b, vf, url = '', src = '' } = f;
-  foods[n.toLowerCase()] = { n, k, p, f: fat, s, b, vf, url, src };
+  const key = f.key || f.n.toLowerCase();
+  const old = foods[key] || FOODS[Object.keys(FOODS).find((id) => FOODS[id].n.toLowerCase() === key)] || {};
+  const { n, k, p, f: fat, s, b, vf } = { ...old, ...f };
+  const aliases = new Set(old.alias || []);
+  if (alias && !n.toLowerCase().includes(alias)) aliases.add(alias);
+  foods[key] = {
+    n, k, p, f: fat, s, b, vf,
+    url: f.url ?? old.url ?? '', src: f.src ?? old.src ?? '',
+    pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8),
+  };
   store.set('foods', foods);
 }
 
@@ -193,7 +204,7 @@ function refresh() {
   const [lo, hi] = TARGETS.kcal;
   $('#kcal').textContent = fmt(t.k);
   const left = lo - t.k;
-  $('#kcalt').textContent = t.k > hi ? `kcal · ${fmt(t.k - hi)} ponad ${hi}` : left > 0 ? `kcal · brakuje ${fmt(left)} do ${lo}` : `kcal · w normie (${lo}–${hi})`;
+  $('#kcalt').textContent = !t.k ? `kcal · cel ${lo}–${hi}` : t.k > hi ? `kcal · ${fmt(t.k - hi)} ponad ${hi}` : left > 0 ? `kcal · brakuje ${fmt(left)} do ${lo}` : `kcal · w normie (${lo}–${hi})`;
   $('.summary').dataset.state = t.k > hi ? 'bad' : t.k >= lo ? 'ok' : '';
 
   const kcalBar = bar(t.k / hi, t.k > hi ? 'bad' : t.k >= lo ? 'ok' : '', lo / hi);
@@ -272,27 +283,97 @@ q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !
 let abort;
 $('#cancel').onclick = () => abort?.abort();
 
-$('#composer').addEventListener('submit', async (e) => {
+$('#composer').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = q.value.trim();
   if (!text || abort) return;
+  const segs = matchText(text, library());
+  if (segs.some((x) => x.cands.length)) showMatch(segs);
+  else askClaude(text);
+});
+
+function clearDraft() { q.value = ''; store.del('draft'); grow(); }
+
+// Known products: pick the match and amount locally; only the rest goes to Claude.
+function showMatch(segs) {
+  const lib = library();
+  const rows = segs.map((x) => ({ ...x, pick: x.sure ? x.cands[0].key : (x.cands.length ? '' : 'web') }));
+  const ul = $('#mitems');
+  const draw = () => {
+    ul.replaceChildren(...rows.map((r) => {
+      const sel = h('select', { 'aria-label': 'Produkt dla: ' + r.seg },
+        r.cands.length && !r.pick ? h('option', { value: '' }, 'Wybierz…') : null,
+        r.cands.map((c) => h('option', { value: c.key }, c.f.n)),
+        h('option', { value: 'web' }, 'Inne: szukaj w sieci'));
+      sel.value = r.pick;
+      const amt = h('span', { class: 'gw' });
+      const upd = () => {
+        const f = lib[r.pick];
+        if (!f) { amt.replaceChildren(); r.g = 0; return; }
+        if (r.g == null || r.gFor !== r.pick) { const a = gramsFor(r.amount, f); r.g = a.g; r.note = a.note; r.gFor = r.pick; }
+        const kEl = h('span', { class: 'rk' }, fmt(nutr(f, r.g).k));
+        amt.replaceChildren(gramInput(r.g, (g) => { r.g = g; kEl.textContent = fmt(nutr(f, g).k); }, 'gramy: ' + f.n), h('span', {}, 'g'), kEl);
+      };
+      sel.onchange = () => { r.pick = sel.value; upd(); drawButtons(); };
+      upd();
+      return h('li', { class: 'mrow' },
+        h('small', { class: 'meta' }, '„' + r.seg + '”'),
+        h('div', { class: 'mline' }, sel, amt),
+        r.note && lib[r.pick] ? h('small', { class: 'note' }, r.note) : null);
+    }));
+    drawButtons();
+  };
+  const ok = $('#mok');
+  const drawButtons = () => {
+    const web = rows.filter((r) => r.pick === 'web').length;
+    const open = rows.filter((r) => r.pick === '').length;
+    ok.disabled = open > 0;
+    ok.textContent = web ? `Dodaj i szukaj ${web === rows.length ? '' : 'reszty '}w sieci` : 'Dodaj';
+  };
+  draw();
+  const dlg = $('#match');
+  dlg.returnValue = '';
+  dlg.onclose = () => {
+    if (dlg.returnValue !== 'ok') return;
+    let added = 0;
+    for (const r of rows) {
+      const f = lib[r.pick];
+      if (!f || !r.g) continue;
+      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, vf: !!f.vf, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
+      remember({ ...f, key: r.pick, g: r.g }, aliasOf(r.seg));
+      added++;
+    }
+    if (added) { saveDay(); render(); }
+    const rest = rows.filter((r) => r.pick === 'web').map((r) => r.seg);
+    if (rest.length) { q.value = rest.join(', '); grow(); askClaude(q.value); }
+    else { clearDraft(); toast(`Dodano ${added} z moich produktów, bez zapytania do API.`); }
+  };
+  dlg.showModal();
+}
+
+async function askClaude(text) {
   const apiKey = store.get('apikey', '');
   if (!apiKey) { openSettings('Wpisz klucz API, żeby liczyć wartości z opisu.'); return; }
   abort = new AbortController();
   setBusy(true);
   try {
-    const items = await analyze({ apiKey, model: store.get('model', MODELS[0][0]), text, library: library(), signal: abort.signal });
+    const { items, cost } = await analyze({ apiKey, model: store.get('model', MODELS[0][0]), text, signal: abort.signal });
+    addCost(cost);
     showPreview(items.map((x) => ({
-      n: x.name, g: Math.round(x.grams), k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre,
+      n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0, k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre,
       vf: x.veg_fruit, url: x.source_url, src: x.source_name, note: x.note,
-    })));
+    })), cost);
   } catch (err) {
     toast(friendlyError(err));
   } finally {
     abort = null;
     setBusy(false);
   }
-});
+}
+
+const monthKey = () => 'cost:' + keyOf(new Date()).slice(0, 7);
+function addCost(usd) { store.set(monthKey(), store.get(monthKey(), 0) + usd); }
+const usd = (x) => x.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' $';
 
 let busyTimer;
 function setBusy(on) {
@@ -307,7 +388,7 @@ function setBusy(on) {
   busyTimer = setInterval(() => { i = Math.min(i + 1, steps.length - 1); $('#statustext').textContent = steps[i]; }, 12000);
 }
 
-function showPreview(items) {
+function showPreview(items, cost) {
   const dlg = $('#preview');
   const total = h('li', { class: 'sum' });
   const updTotal = () => { total.textContent = `Razem ${fmt(items.reduce((s, it) => s + nutr(it, it.g).k, 0))} kcal`; };
@@ -328,8 +409,8 @@ function showPreview(items) {
       if ($('#psave').checked) remember(it);
     }
     saveDay(); render();
-    q.value = ''; store.del('draft'); grow();
-    toast(`Dodano ${items.length} ${items.length === 1 ? 'pozycję' : 'pozycje'}.`);
+    clearDraft();
+    toast(`Dodano ${items.length} ${items.length === 1 ? 'pozycję' : 'pozycje'} · zapytanie ≈ ${usd(cost)}`);
   };
   dlg.returnValue = '';
   dlg.showModal();
@@ -377,6 +458,7 @@ function openSettings(note) {
   $('#snote').textContent = note || '';
   $('#skey').value = store.get('apikey', '');
   $('#smodel').value = store.get('model', MODELS[0][0]);
+  $('#scost').textContent = `Wydane w tym miesiącu (szacunek z tej aplikacji): ${usd(store.get(monthKey(), 0))}`;
   renderLib();
   dlg.returnValue = '';
   dlg.onclose = () => {
