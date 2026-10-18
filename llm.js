@@ -4,8 +4,8 @@
 import Anthropic from './vendor/anthropic-sdk-0.131.0.mjs';
 
 export const MODELS = [
+  ['claude-sonnet-5-5', 'Claude Sonnet 5.5 (domyślny, tańszy)'],
   ['claude-opus-5-5', 'Claude Opus 5.5 (dokładniejszy)'],
-  ['claude-sonnet-5-5', 'Claude Sonnet 5.5 (tańszy)'],
 ];
 
 // USD per million tokens [input, output, cache read]; web search is $10 per 1000 searches.
@@ -41,7 +41,7 @@ const SAVE_TOOL = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'grams', 'piece_grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'veg_fruit', 'source_name', 'source_url', 'note'],
+          required: ['name', 'grams', 'piece_grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'veg_fruit', 'source_name', 'source_url', 'note'],
           properties: {
             name: { type: 'string', description: 'Polish product name including its form, e.g. "Makaron pełnoziarnisty (ugotowany)"' },
             grams: NUM('Amount eaten, in grams'),
@@ -51,6 +51,12 @@ const SAVE_TOOL = {
             fat: NUM('Total fat, g per 100 g'),
             saturated_fat: NUM('Saturated fat, g per 100 g'),
             fibre: NUM('Dietary fibre, g per 100 g'),
+            salt: NUM('Salt, g per 100 g (if only sodium is given: sodium × 2.5)'),
+            category: {
+              type: 'string',
+              enum: ['fish', 'legumes', 'red_meat', 'none'],
+              description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, soy, tofu; red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); none: everything else',
+            },
             veg_fruit: { type: 'boolean', description: 'True for vegetables and fruit (not potatoes, not juice)' },
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "Open Food Facts", "USDA FoodData Central", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },

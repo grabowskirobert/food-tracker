@@ -1,9 +1,10 @@
-import { FOODS, PLANS, TARGETS } from './data.js';
+import { FOODS, PLANS, TARGETS, WEEK } from './data.js';
 import { analyze, friendlyError, MODELS } from './llm.js';
 import { matchText, gramsFor, aliasOf } from './match.js';
 
 const $ = (s) => document.querySelector(s);
-const NUT = ['k', 'p', 'f', 's', 'b'];
+const NUT = ['k', 'p', 'f', 's', 'b', 'sl'];
+const CATS = { fish: 'ryba', legumes: 'strączkowe', red_meat: 'czerwone mięso / wędliny' };
 
 // --- storage: everything lives in localStorage under "ft:" ---------------------
 const store = {
@@ -43,11 +44,11 @@ function remember(f, alias) {
   const foods = customFoods();
   const key = f.key || f.n.toLowerCase();
   const old = foods[key] || FOODS[Object.keys(FOODS).find((id) => FOODS[id].n.toLowerCase() === key)] || {};
-  const { n, k, p, f: fat, s, b, vf } = { ...old, ...f };
+  const { n, k, p, f: fat, s, b, sl, vf, cat } = { ...old, ...f };
   const aliases = new Set(old.alias || []);
   if (alias && !n.toLowerCase().includes(alias)) aliases.add(alias);
   foods[key] = {
-    n, k, p, f: fat, s, b, vf,
+    n, k, p, f: fat, s, b, sl, vf, cat: cat || '',
     url: f.url ?? old.url ?? '', src: f.src ?? old.src ?? '',
     pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8),
   };
@@ -56,16 +57,44 @@ function remember(f, alias) {
 
 // --- nutrition -------------------------------------------------------------------
 function nutr(f, g) {
-  const v = { vf: f.vf ? g : 0 };
+  // nosl counts items saved before salt was tracked, so the salt total can say it is incomplete.
+  const v = { vf: f.vf ? g : 0, nosl: f.sl == null && g > 0 ? 1 : 0 };
   for (const c of NUT) v[c] = (f[c] || 0) * g / 100;
   return v;
 }
-function addTo(t, v) { for (const c of [...NUT, 'vf']) t[c] += v[c]; }
-const zero = () => ({ k: 0, p: 0, f: 0, s: 0, b: 0, vf: 0 });
+function addTo(t, v) { for (const c of [...NUT, 'vf', 'nosl']) t[c] += v[c]; }
+const zero = () => ({ k: 0, p: 0, f: 0, s: 0, b: 0, sl: 0, vf: 0, nosl: 0 });
 
 const plan = () => PLANS[day.plan];
 const gramsOf = (mi, ii, g0) => day.over[`${day.plan}:${mi}:${ii}`] ?? g0;
 const skipped = (mi) => !!day.skip[`${day.plan}:${mi}`];
+
+// Everything eaten on a stored day: plan meals that were not skipped, plus added items.
+function eatenOn(d) {
+  const out = [];
+  PLANS[d.plan]?.meals.forEach((m, mi) => {
+    if (d.skip[`${d.plan}:${mi}`]) return;
+    m.items.forEach(([id, g0], ii) => out.push([FOODS[id], d.over[`${d.plan}:${mi}:${ii}`] ?? g0]));
+  });
+  for (const it of d.items) out.push([it, it.g]);
+  return out;
+}
+
+// Monday–Sunday week of the shown day: days with fish, days with legumes, grams of red meat.
+function weekTotals() {
+  const w = { fish: 0, legumes: 0, red_meat: 0 };
+  const mon = new Date(cur); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(mon); d.setDate(d.getDate() + i);
+    const dd = keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null);
+    if (!dd) continue;
+    const eaten = eatenOn(dd).filter(([, g]) => g > 0);
+    if (eaten.some(([f]) => f.cat === 'fish')) w.fish++;
+    if (eaten.some(([f]) => f.cat === 'legumes')) w.legumes++;
+    w.red_meat += eaten.filter(([f]) => f.cat === 'red_meat').reduce((sum, [, g]) => sum + g, 0);
+  }
+  return w;
+}
 
 function totals() {
   const t = zero();
@@ -90,6 +119,8 @@ const METRICS = [
     dec: 1, extra: (t) => (t.k >= TARGETS.kcal[0] ? `${fmt(satPct(t), 1)}% kcal` : null) },
   { label: 'Błonnik', unit: 'g', val: (t) => t.b, kind: 'min', lo: TARGETS.fibre[0] },
   { label: 'Warzywa i owoce', unit: 'g', val: (t) => t.vf, kind: 'min', lo: TARGETS.vf[0] },
+  { label: 'Sól', unit: 'g', val: (t) => t.sl, kind: 'max', hi: TARGETS.salt[0], dec: 1, bad: (t) => t.sl >= TARGETS.salt[0],
+    extra: (t) => (t.nosl ? `bez danych: ${t.nosl} poz.` : null) },
 ];
 
 // --- tiny DOM helper (textContent only, so nothing from the web is parsed as HTML) --
@@ -171,7 +202,8 @@ function itemRow(it, { onGrams, onDelete }) {
   const upd = () => {
     const v = nutr(it, it.g);
     rk.textContent = fmt(v.k);
-    meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)}`);
+    meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
+      + (CATS[it.cat] ? ` · ${CATS[it.cat]}` : ''));
     if (it.url && /^https?:\/\//.test(it.url)) meta.append(' · ', h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, it.src || 'źródło'));
     else if (it.src && it.src !== 'szacunek') meta.append(' · ', it.src);
   };
@@ -219,6 +251,12 @@ function refresh() {
       bar(v / ref, state));
   }));
   kcalBar.classList.add('kbar');
+
+  const w = weekTotals();
+  const wk = (label, v, goal, max) => h('span', { class: max ? (v > goal ? 'bad' : '') : (v >= goal ? 'ok' : '') },
+    label, ' ', h('b', {}, fmt(v)), max ? ` / ${goal} g` : `/${goal}`);
+  $('#week').replaceChildren(h('small', {}, 'Ten tydzień'),
+    wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true));
 
   const mealK = new Map();
   for (const r of rowRefs) {
@@ -339,7 +377,7 @@ function showMatch(segs) {
     for (const r of rows) {
       const f = lib[r.pick];
       if (!f || !r.g) continue;
-      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, vf: !!f.vf, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
+      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, cat: f.cat || '', vf: !!f.vf, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
       remember({ ...f, key: r.pick, g: r.g }, aliasOf(r.seg));
       added++;
     }
@@ -357,11 +395,11 @@ async function askClaude(text) {
   abort = new AbortController();
   setBusy(true);
   try {
-    const { items, cost } = await analyze({ apiKey, model: store.get('model', MODELS[0][0]), text, signal: abort.signal });
+    const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
     addCost(cost);
     showPreview(items.map((x) => ({
       n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0, k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre,
-      vf: x.veg_fruit, url: x.source_url, src: x.source_name, note: x.note,
+      sl: x.salt, cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit, url: x.source_url, src: x.source_name, note: x.note,
     })), cost);
   } catch (err) {
     toast(friendlyError(err));
@@ -417,7 +455,7 @@ function showPreview(items, cost) {
 }
 
 // --- manual add -------------------------------------------------------------------
-const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb' };
+const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl' };
 $('#manualbtn').onclick = () => {
   const lib = library();
   const sel = $('#mlib');
@@ -428,6 +466,7 @@ $('#manualbtn').onclick = () => {
     if (!f) return;
     for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
     $('#mvf').checked = !!f.vf;
+    $('#mcat').value = f.cat || '';
     $('#mg').focus();
   };
   $('#mform').reset();
@@ -436,7 +475,7 @@ $('#manualbtn').onclick = () => {
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
     const f = lib[sel.value];
-    const it = { n: $('#mn').value.trim(), g: num($('#mg').value), vf: $('#mvf').checked, id: Date.now() };
+    const it = { n: $('#mn').value.trim(), g: num($('#mg').value), vf: $('#mvf').checked, cat: $('#mcat').value, id: Date.now() };
     for (const c of NUT) it[c] = num($(MF[c]).value);
     if (f && f.n === it.n) Object.assign(it, { url: f.url || '', src: f.src || 'moje produkty' });
     else it.src = 'etykieta';
@@ -449,6 +488,8 @@ $('#manualbtn').onclick = () => {
 };
 
 // --- settings ---------------------------------------------------------------------
+// Stored under a new key so earlier saved choices fall back to the new default (Sonnet).
+const currentModel = () => store.get('llm', MODELS[0][0]);
 $('#smodel').replaceChildren(...MODELS.map(([id, label]) => h('option', { value: id }, label)));
 $('#gear').onclick = () => openSettings();
 
@@ -457,20 +498,71 @@ function openSettings(note) {
   $('#snote').hidden = !note;
   $('#snote').textContent = note || '';
   $('#skey').value = store.get('apikey', '');
-  $('#smodel').value = store.get('model', MODELS[0][0]);
+  $('#smodel').value = currentModel();
   $('#scost').textContent = `Wydane w tym miesiącu (szacunek z tej aplikacji): ${usd(store.get(monthKey(), 0))}`;
   renderLib();
+  drawFill();
   dlg.returnValue = '';
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
     const key = $('#skey').value.trim();
     if (key) store.set('apikey', key); else store.del('apikey');
-    store.set('model', $('#smodel').value);
+    store.set('llm', $('#smodel').value);
     toast('Zapisano ustawienia.');
   };
   dlg.showModal();
   if (note) $('#skey').focus();
 }
+
+// Products saved before salt and categories were tracked: fill them in with one Claude call,
+// then patch the copies already logged on past days.
+function missingSalt() { return Object.entries(customFoods()).filter(([, f]) => f.sl == null); }
+function drawFill() {
+  const n = missingSalt().length;
+  $('#sfill').hidden = !n;
+  $('#sfill').textContent = `Uzupełnij sól i kategorie z sieci (${n} ${n === 1 ? 'produkt' : 'produkty'})`;
+}
+$('#sfill').onclick = async () => {
+  const apiKey = store.get('apikey', '');
+  if (!apiKey) { toast('Najpierw wpisz klucz API.'); return; }
+  const list = missingSalt();
+  $('#settings').close();
+  abort = new AbortController();
+  setBusy(true);
+  try {
+    const text = 'Fill in the values for these products. Return exactly one item per line, in this order, '
+      + 'keeping each name exactly as written, grams 100:\n' + list.map(([, f]) => '- ' + f.n).join('\n');
+    const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
+    addCost(cost);
+    const foods = customFoods();
+    const fixed = {};
+    list.forEach(([key, f], i) => {
+      const x = items.find((it) => it.name.toLowerCase() === f.n.toLowerCase()) || items[i];
+      if (!x) return;
+      foods[key] = { ...foods[key], sl: x.salt, cat: x.category === 'none' ? '' : x.category };
+      fixed[f.n.toLowerCase()] = foods[key];
+    });
+    store.set('foods', foods);
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k.startsWith('ft:day:')) continue;
+      const d = JSON.parse(localStorage.getItem(k));
+      let changed = false;
+      for (const it of d.items) {
+        const f = fixed[it.n.toLowerCase()];
+        if (f && it.sl == null) { it.sl = f.sl; it.cat = f.cat; changed = true; }
+      }
+      if (changed) localStorage.setItem(k, JSON.stringify(d));
+    }
+    loadDay(); render();
+    toast(`Uzupełnione produkty: ${Object.keys(fixed).length} · ≈ ${usd(cost)}`);
+  } catch (err) {
+    toast(friendlyError(err));
+  } finally {
+    abort = null;
+    setBusy(false);
+  }
+};
 
 function renderLib() {
   const foods = customFoods();

@@ -180,3 +180,9 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .mline { display: flex; align-items: center; gap: 8px; }
 .mline select { flex: 1; min-width: 0; font-size: 16px; color: var(--fg); padding: 8px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); }
 .mline .gw { gap: 4px; }
+.week { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rule); font-size: .8rem; color: var(--muted); }
+.week small { width: 100%; font-size: .75rem; }
+.week b { color: var(--fg); font-weight: 600; }
+.week .ok b { color: var(--ok); }
+.week .bad b { color: var(--bad); }
+#sfill { align-self: flex-start; border: 1px solid var(--accent); color: var(--accent); background: none; border-radius: 20px; padding: 8px 14px; font-size: .9rem; }

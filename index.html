@@ -32,6 +32,7 @@
   <section class="card summary" aria-live="polite">
     <div class="kcal"><b id="kcal">0</b> <span id="kcalt"></span></div>
     <div class="bars" id="bars"></div>
+    <div class="week" id="week"></div>
   </section>
 
   <div class="seg" role="radiogroup" aria-label="Plan dnia" id="seg">
@@ -95,6 +96,15 @@
       <label>Tłuszcz / 100 g <input id="mf" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Nasycone / 100 g <input id="ms" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Błonnik / 100 g <input id="mb" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Sól / 100 g <input id="msl" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Kategoria
+        <select id="mcat">
+          <option value="">inne</option>
+          <option value="fish">ryba</option>
+          <option value="legumes">strączkowe</option>
+          <option value="red_meat">czerwone mięso / wędliny</option>
+        </select>
+      </label>
     </div>
     <p class="hint">Gdy znasz tylko sumę dania (np. z menu restauracji), wpisz 100 g i sumy w polach „/ 100 g”.</p>
     <label class="check"><input type="checkbox" id="mvf"> Warzywa lub owoce</label>
@@ -122,6 +132,7 @@
       <input type="file" id="sfile" accept="application/json,.json" hidden>
     </div>
     <p class="hint">Dane są zapisane w pamięci tej aplikacji na telefonie. Usunięcie ikony z ekranu głównego je kasuje, więc co jakiś czas zrób eksport do Plików.</p>
+    <button type="button" id="sfill" hidden></button>
     <details>
       <summary>Moje produkty</summary>
       <ul id="slib" class="rows small"></ul>

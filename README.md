@@ -1,6 +1,6 @@
 # Food tracker
 
-Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie` (cele: 2250–2550 kcal, białko ≥ 110 g, nasycone < 7% energii, błonnik ≥ 25 g, warzywa i owoce ≥ 400 g).
+Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cele dzienne: 2250–2550 kcal, białko ≥ 110 g, nasycone < 19 g (7% energii), błonnik ≥ 25 g, warzywa i owoce ≥ 400 g, sól < 5 g. Tygodniowe: ryba 2×, strączkowe 2×, czerwone mięso i wędliny ≤ 500 g.
 
 - Dzień A, Dzień B albo Własny: gramy w planie edytowalne, każdy posiłek można pominąć.
 - „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Przed dodaniem sprawdzasz i poprawiasz gramy.
