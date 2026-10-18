@@ -66,9 +66,17 @@ function totals() {
   return t;
 }
 
+const satPct = (t) => (t.k ? t.s * 9 / t.k * 100 : 0);
+// 7% of the middle of the kcal range, in grams (2400 kcal → 19 g).
+const SAT_BUDGET = Math.round(TARGETS.satpct[0] / 100 * (TARGETS.kcal[0] + TARGETS.kcal[1]) / 2 / 9);
+
 const METRICS = [
   { label: 'Białko', unit: 'g', val: (t) => t.p, kind: 'min', lo: TARGETS.protein[0] },
-  { label: 'Nasycone', unit: '% kcal', val: (t) => (t.k ? t.s * 9 / t.k * 100 : 0), kind: 'max', hi: TARGETS.satpct[0], dec: 1, extra: (t) => `${fmt(t.s)} g` },
+  // The % limit applies to the whole day: early on one food's own share would show (an egg alone is ~20%),
+  // so the bar tracks grams against the day's budget and the % only counts once the day reaches the kcal target.
+  { label: 'Nasycone', unit: 'g', val: (t) => t.s, kind: 'max', hi: SAT_BUDGET,
+    bad: (t) => t.s >= SAT_BUDGET || (t.k >= TARGETS.kcal[0] && satPct(t) >= TARGETS.satpct[0]),
+    dec: 1, extra: (t) => (t.k >= TARGETS.kcal[0] ? `${fmt(satPct(t), 1)}% kcal` : null) },
   { label: 'Błonnik', unit: 'g', val: (t) => t.b, kind: 'min', lo: TARGETS.fibre[0] },
   { label: 'Warzywa i owoce', unit: 'g', val: (t) => t.vf, kind: 'min', lo: TARGETS.vf[0] },
 ];
@@ -192,11 +200,11 @@ function refresh() {
   $('#bars').replaceChildren(kcalBar, ...METRICS.map((m) => {
     const v = m.val(t);
     const ref = m.kind === 'min' ? m.lo : m.hi;
-    const state = m.kind === 'min' ? (v >= m.lo ? 'ok' : '') : (v >= m.hi ? 'bad' : 'ok');
+    const state = m.kind === 'min' ? (v >= m.lo ? 'ok' : '') : (m.bad(t) ? 'bad' : 'ok');
     const goal = m.kind === 'min' ? `≥ ${m.lo}` : `< ${m.hi}`;
     return h('div', { class: 'metric' },
       h('div', { class: 'ml' }, h('span', {}, m.label),
-        h('span', {}, h('b', {}, fmt(v, m.dec || 0)), ` / ${goal} ${m.unit}`, m.extra ? h('small', {}, ` · ${m.extra(t)}`) : null)),
+        h('span', {}, h('b', {}, fmt(v, m.dec || 0)), ` / ${goal} ${m.unit}`, m.extra?.(t) ? h('small', {}, ` · ${m.extra(t)}`) : null)),
       bar(v / ref, state));
   }));
   kcalBar.classList.add('kbar');
