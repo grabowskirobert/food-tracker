@@ -186,3 +186,17 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .week .ok b { color: var(--ok); }
 .week .bad b { color: var(--bad); }
 #sfill { align-self: flex-start; border: 1px solid var(--accent); color: var(--accent); background: none; border-radius: 20px; padding: 8px 14px; font-size: .9rem; }
+.gear { position: relative; }
+.dot { position: absolute; top: 7px; right: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--fill); border: 2px solid var(--bg); box-sizing: content-box; }
+.dot[data-state="off"] { display: none; }
+.dot[data-state="ok"] { background: var(--ok); }
+.dot[data-state="bad"] { background: var(--bad); }
+.dot[data-state="busy"] { animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.body .brow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.body label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .9rem; }
+.body label span { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.body input { width: 5.2rem; text-align: right; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: var(--track); font-size: 16px; font-variant-numeric: tabular-nums; }
+.body input:focus { outline: none; border-color: var(--accent); background: var(--card); }
+.trend { margin-top: 10px; font-size: .8rem; color: var(--muted); display: grid; gap: 2px; }
+.trend:empty { display: none; }

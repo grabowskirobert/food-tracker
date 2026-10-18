@@ -1,6 +1,7 @@
 import { FOODS, PLANS, TARGETS, WEEK } from './data.js';
 import { analyze, friendlyError, MODELS } from './llm.js';
 import { matchText, gramsFor, aliasOf } from './match.js';
+import { createSync, mergeMaps, DEFAULT_REPO } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
 const NUT = ['k', 'p', 'f', 's', 'b', 'sl'];
@@ -11,6 +12,11 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('ft:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('ft:' + k, JSON.stringify(v)); } catch { toast('Nie udało się zapisać danych.'); } },
   del(k) { try { localStorage.removeItem('ft:' + k); } catch {} },
+  keys(prefix) {
+    const out = [];
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('ft:' + prefix)) out.push(k.slice(3)); } } catch {}
+    return out;
+  },
 };
 navigator.storage?.persist?.();
 
@@ -28,11 +34,19 @@ function loadDay() {
   // Days start as "Własny"; A and B stay one tap away as a template.
   day = store.get('day:' + keyOf(cur), null) || { plan: 'free', over: {}, skip: {}, items: [] };
 }
+// Every record carries `upd` (ms); sync keeps the newest copy of each day and product.
 function saveDay() {
+  day.upd = Date.now();
   store.set('day:' + keyOf(cur), day);
+  sync.dirtyDay(keyOf(cur));
 }
 
-function customFoods() { return store.get('foods', {}); }
+// Deleted products stay as { del, upd } so the deletion reaches the other device.
+const allFoods = () => store.get('foods', {});
+function customFoods() {
+  return Object.fromEntries(Object.entries(allFoods()).filter(([, f]) => !f.del));
+}
+function saveFoods(foods) { store.set('foods', foods); sync.dirtyFoods(); }
 function library() {
   const lib = {};
   for (const f of Object.values(FOODS)) lib[f.n.toLowerCase()] = f;
@@ -41,18 +55,18 @@ function library() {
 // Saves a product (or updates one picked from the library), keeping the last portion and the
 // words the user described it with, so the next description matches it locally.
 function remember(f, alias) {
-  const foods = customFoods();
+  const foods = allFoods();
   const key = f.key || f.n.toLowerCase();
-  const old = foods[key] || FOODS[Object.keys(FOODS).find((id) => FOODS[id].n.toLowerCase() === key)] || {};
+  const old = (foods[key] && !foods[key].del ? foods[key] : null) || FOODS[Object.keys(FOODS).find((id) => FOODS[id].n.toLowerCase() === key)] || {};
   const { n, k, p, f: fat, s, b, sl, vf, cat } = { ...old, ...f };
   const aliases = new Set(old.alias || []);
   if (alias && !n.toLowerCase().includes(alias)) aliases.add(alias);
   foods[key] = {
     n, k, p, f: fat, s, b, sl, vf, cat: cat || '',
     url: f.url ?? old.url ?? '', src: f.src ?? old.src ?? '',
-    pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8),
+    pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8), upd: Date.now(),
   };
-  store.set('foods', foods);
+  saveFoods(foods);
 }
 
 // --- nutrition -------------------------------------------------------------------
@@ -152,6 +166,7 @@ function render() {
   renderDate();
   renderMeals();
   renderItems();
+  drawBody();
   refresh();
 }
 
@@ -499,6 +514,10 @@ function openSettings(note) {
   $('#snote').textContent = note || '';
   $('#skey').value = store.get('apikey', '');
   $('#smodel').value = currentModel();
+  $('#ghtoken').value = store.get('ghtoken', '');
+  $('#ghrepo').value = store.get('ghrepo', '');
+  $('#ghrepo').placeholder = DEFAULT_REPO;
+  drawSync();
   $('#scost').textContent = `Wydane w tym miesiącu (szacunek z tej aplikacji): ${usd(store.get(monthKey(), 0))}`;
   renderLib();
   drawFill();
@@ -508,6 +527,7 @@ function openSettings(note) {
     const key = $('#skey').value.trim();
     if (key) store.set('apikey', key); else store.del('apikey');
     store.set('llm', $('#smodel').value);
+    if (applySync()) sync.start({ full: true });
     toast('Zapisano ustawienia.');
   };
   dlg.showModal();
@@ -534,25 +554,23 @@ $('#sfill').onclick = async () => {
       + 'keeping each name exactly as written, grams 100:\n' + list.map(([, f]) => '- ' + f.n).join('\n');
     const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
     addCost(cost);
-    const foods = customFoods();
+    const foods = allFoods();
     const fixed = {};
     list.forEach(([key, f], i) => {
       const x = items.find((it) => it.name.toLowerCase() === f.n.toLowerCase()) || items[i];
       if (!x) return;
-      foods[key] = { ...foods[key], sl: x.salt, cat: x.category === 'none' ? '' : x.category };
+      foods[key] = { ...foods[key], sl: x.salt, cat: x.category === 'none' ? '' : x.category, upd: Date.now() };
       fixed[f.n.toLowerCase()] = foods[key];
     });
-    store.set('foods', foods);
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (!k.startsWith('ft:day:')) continue;
-      const d = JSON.parse(localStorage.getItem(k));
+    saveFoods(foods);
+    for (const k of store.keys('day:')) {
+      const d = store.get(k, null);
       let changed = false;
-      for (const it of d.items) {
+      for (const it of d?.items || []) {
         const f = fixed[it.n.toLowerCase()];
         if (f && it.sl == null) { it.sl = f.sl; it.cat = f.cat; changed = true; }
       }
-      if (changed) localStorage.setItem(k, JSON.stringify(d));
+      if (changed) { d.upd = Date.now(); store.set(k, d); sync.dirtyDay(k.slice(4)); }
     }
     loadDay(); render();
     toast(`Uzupełnione produkty: ${Object.keys(fixed).length} · ≈ ${usd(cost)}`);
@@ -570,15 +588,15 @@ function renderLib() {
   $('#slib').replaceChildren(...(keys.length ? keys.map((k) => h('li', {},
     h('span', { class: 'nm' }, foods[k].n, h('small', { class: 'meta' }, `${fmt(foods[k].k)} kcal / 100 g`)),
     h('button', { type: 'button', class: 'icon del', 'aria-label': 'Usuń: ' + foods[k].n, onclick: () => {
-      const all = customFoods(); delete all[k]; store.set('foods', all); renderLib();
+      const all = allFoods(); all[k] = { del: true, upd: Date.now() }; saveFoods(all); renderLib();
     } }, '×'))) : [h('li', { class: 'empty' }, 'Jeszcze nic. Produkty dodane z opisu lub ręcznie pojawią się tutaj.')]));
 }
 
 $('#sexport').onclick = async () => {
   const data = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k.startsWith('ft:') && k !== 'ft:apikey') data[k] = localStorage.getItem(k);
+  for (const k of [...store.keys('day:'), 'foods']) {
+    const raw = localStorage.getItem('ft:' + k);
+    if (raw != null) data['ft:' + k] = raw;
   }
   const name = `food-tracker-${keyOf(new Date())}.json`;
   const file = new File([JSON.stringify(data, null, 1)], name, { type: 'application/json' });
@@ -596,15 +614,144 @@ $('#sfile').onchange = async (e) => {
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
-    const keys = Object.keys(data).filter((k) => k.startsWith('ft:') && k !== 'ft:apikey');
+    const keys = Object.keys(data).filter((k) => k === 'ft:foods' || k.startsWith('ft:day:'));
     if (!keys.length) throw new Error();
-    for (const k of keys) localStorage.setItem(k, data[k]);
+    // Merge by `upd`, so an older export never overwrites newer entries.
+    let taken = 0;
+    for (const k of keys) {
+      const rec = JSON.parse(data[k]);
+      if (k === 'ft:foods') {
+        const { merged, toLocal } = mergeMaps(allFoods(), rec);
+        if (toLocal.length) { saveFoods(merged); taken += toLocal.length; }
+      } else if ((rec.upd || 0) > (store.get(k.slice(3), null)?.upd || 0) || store.get(k.slice(3), null) == null) {
+        store.set(k.slice(3), rec); sync.dirtyDay(k.slice(7)); taken++;
+      }
+    }
     loadDay(); render(); renderLib();
-    toast(`Zaimportowano ${keys.length} wpisów.`);
+    toast(taken ? `Zaimportowano wpisów: ${taken}.` : 'Nic do zaimportowania: masz już nowsze dane.');
   } catch {
     toast('To nie jest plik eksportu z tej aplikacji.');
   }
 };
+
+
+// --- weight and waist ---------------------------------------------------------------
+const dayAt = (d) => (keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null));
+const back = (n) => { const x = new Date(cur); x.setDate(x.getDate() - n); return x; };
+const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+// Values of a field on the days `from`..`to` before the shown one (0 = the shown day).
+function span(field, from, to) {
+  const out = [];
+  for (let o = from; o <= to; o++) { const v = dayAt(back(o))?.[field]; if (v > 0) out.push(v); }
+  return out;
+}
+function lastOf(field, from) {
+  for (let o = from; o < from + 60; o++) { const v = dayAt(back(o))?.[field]; if (v > 0) return { v, o }; }
+  return null;
+}
+const signed = (x, d, unit) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${fmt(Math.abs(x), d)} ${unit}`;
+
+function drawBody() {
+  $('#bw').value = day.w ?? '';
+  $('#bt').value = day.t ?? '';
+  drawTrend();
+}
+function drawTrend() {
+  const lines = [];
+  const now = span('w', 0, 6), before = span('w', 7, 13);
+  if (now.length) {
+    let t = `Waga: średnia 7 dni ${fmt(mean(now), 1)} kg (${now.length} pom.)`;
+    if (before.length) t += ` · ${signed(mean(now) - mean(before), 1, 'kg')} vs poprzedni tydzień`;
+    lines.push(t);
+  }
+  const last = lastOf('t', 0);
+  if (last) {
+    let t = `Talia: ${fmt(last.v, 1)} cm${last.o ? ` (${last.o} dni temu)` : ''}`;
+    const older = lastOf('t', last.o + 7);
+    if (older) t += ` · ${signed(last.v - older.v, 1, 'cm')} vs ${older.o - last.o} dni wcześniej`;
+    lines.push(t);
+  }
+  $('#btrend').replaceChildren(...(lines.length ? lines : ['Zmierz się rano, przed jedzeniem; trend liczę ze średniej tygodnia.']).map((l) => h('div', {}, l)));
+}
+for (const [id, field] of [['#bw', 'w'], ['#bt', 't']]) {
+  $(id).addEventListener('input', (e) => {
+    const v = num(e.target.value);
+    if (v) day[field] = v; else delete day[field];
+    saveDay(); drawTrend();
+  });
+}
+
+// --- sync with the private data repo ------------------------------------------------
+const monthOf = (d) => keyOf(d).slice(0, 7);
+const sync = createSync({
+  store,
+  focusMonths: () => {
+    const now = new Date();
+    return [...new Set([monthOf(now), monthOf(new Date(now.getFullYear(), now.getMonth() - 1, 1)), monthOf(cur)])];
+  },
+  onStatus: () => drawSync(),
+  onRemote: ({ days }) => {
+    if (!days.includes(keyOf(cur))) return;
+    loadDay();
+    if (typing()) pendingRender = true; else render();
+  },
+});
+
+// A remote update must not redraw under the user's fingers: wait until the field loses focus.
+let pendingRender = false;
+const typing = () => !!document.activeElement?.matches?.('input, textarea, select');
+document.addEventListener('focusout', () => {
+  if (!pendingRender) return;
+  pendingRender = false;
+  setTimeout(() => { if (!typing()) render(); }, 0);
+});
+
+const when = (ts) => new Date(ts).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+let warnedStale = false;
+function syncLine(st) {
+  const last = st.last ? ` Ostatnia udana: ${when(st.last)}.` : '';
+  if (st.state === 'off') return 'Synchronizacja wyłączona. Wklej token, żeby zapisywać kopię w repo.';
+  if (st.state === 'busy') return 'Synchronizuję…';
+  if (st.state === 'ok') return `Zsynchronizowano ${when(st.last)}.`;
+  if (st.state === 'pending') return `${st.dirty ? `Do wysłania: ${st.dirty}. ` : ''}${st.err ? `Błąd: ${st.err}` : ''}${last}`.trim() || 'Czeka na pierwszą synchronizację.';
+  return `Błąd: ${st.err || 'brak synchronizacji'}${last}`;
+}
+function drawSync() {
+  const st = sync.status();
+  const dot = $('#syncdot');
+  dot.dataset.state = st.state;
+  dot.title = syncLine(st);
+  $('#syncstat').textContent = syncLine(st);
+  if (st.state === 'bad' && st.last && !warnedStale) {
+    warnedStale = true;
+    toast(`Kopia nieaktualna od ${Math.max(st.staleDays, 1)} dni: ${st.err || 'brak synchronizacji'}`);
+  }
+  if (st.state === 'ok') warnedStale = false;
+}
+
+// Saves the token and repo fields; a change starts the first sync from scratch.
+function applySync() {
+  const token = $('#ghtoken').value.trim();
+  const repo = $('#ghrepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, '');
+  const changed = token !== store.get('ghtoken', '') || repo !== store.get('ghrepo', '');
+  if (token) store.set('ghtoken', token); else store.del('ghtoken');
+  if (repo) store.set('ghrepo', repo); else store.del('ghrepo');
+  if (changed) sync.resetSynced();
+  return changed;
+}
+$('#syncnow').onclick = async () => {
+  applySync();
+  await sync.start({ full: true });
+  drawSync();
+};
+
+sync.start({ full: true });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') sync.start({ full: true }); else sync.flush();
+});
+addEventListener('pagehide', () => sync.flush());
+addEventListener('online', () => sync.start({ full: true }));
+drawSync();
 
 // --- start ------------------------------------------------------------------------
 loadDay();

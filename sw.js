@@ -1,7 +1,7 @@
 // Network first, cache as fallback: updates show up on the next launch, and the app
 // still opens without signal. API calls are not cached.
-const CACHE = 'ft-v3';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'llm.js', 'match.js',
+const CACHE = 'ft-v4';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'data.js', 'llm.js', 'match.js', 'sync.js',
   'vendor/anthropic-sdk-0.131.0.mjs', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

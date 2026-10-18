@@ -6,7 +6,8 @@ Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cel
 - „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Przed dodaniem sprawdzasz i poprawiasz gramy.
 - Produkty raz sprawdzone trafiają do „moich produktów” i przy kolejnym opisie model bierze je stamtąd zamiast szukać.
 - „+”: dodanie ręczne z etykiety albo z listy moich produktów (bez API).
-- Dane: `localStorage` w przeglądarce, jeden wpis na dzień (`ft:day:RRRR-MM-DD`). Eksport i import JSON w ustawieniach.
+- Waga i talia: jedna linijka na dzień, pod podsumowaniem. Pokazuje średnią wagi z 7 dni i zmianę względem poprzedniego tygodnia oraz zmianę talii.
+- Dane: najpierw `localStorage` (jeden wpis na dzień, `ft:day:RRRR-MM-DD`), a kopia i synchronizacja telefon ↔ komputer w osobnym **prywatnym** repo (patrz niżej). Eksport i import JSON w ustawieniach to dodatkowa kopia.
 
 Bez backendu i bez kroku budowania: statyczne pliki, hostowane na GitHub Pages.
 
@@ -26,6 +27,18 @@ Klucz jest zapisany tylko w `localStorage` tej aplikacji na telefonie. Nie ma go
 - Tekst z sieci i od modelu jest wstawiany jako tekst, nigdy jako HTML.
 - Limit wydatków workspace ogranicza maksymalną stratę, a klucz można w każdej chwili unieważnić w konsoli.
 
+## Kopia danych i synchronizacja
+
+Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera `days/RRRR-MM.json` (dni z posiłkami, wagą i talią) oraz `foods.json` (moje produkty). Tego repo nie wolno robić publicznym.
+
+1. Utwórz prywatne repo z README (puste repo też zadziała, pierwszy zapis tworzy pierwszy commit).
+2. GitHub → Settings → Developer settings → Fine-grained tokens: dostęp tylko do tego repo, uprawnienie *Contents: Read and write*, data ważności do roku.
+3. W aplikacji: ⋯ → Token GitHub → Zapisz. Kropka przy ⋯: zielona = zsynchronizowane, szara = czeka lub trwa, czerwona = brak udanej synchronizacji od ponad doby.
+
+Kiedy: przy otwarciu i powrocie do aplikacji, 30 s po ostatniej zmianie, przy wyjściu z aplikacji (iOS nie gwarantuje, że zdąży), po odzyskaniu internetu i ręcznie w ustawieniach. W tle aplikacja nie synchronizuje, bo iOS nie pozwala stronie działać po zamknięciu.
+
+Scalanie: każdy dzień i produkt ma znacznik czasu `upd`, wygrywa nowsza wersja całego dnia. Konflikt zapisu (drugie urządzenie wysłało w międzyczasie) kończy się pobraniem, scaleniem i drugą próbą. Usunięty produkt zostaje w pliku jako znacznik `del`, żeby usunięcie dotarło na drugie urządzenie. Gdy token wygaśnie, aplikacja działa dalej lokalnie, a po wklejeniu nowego tokenu wysyła zaległości.
+
 ## Pliki
 
 | Plik | Co robi |
@@ -33,6 +46,8 @@ Klucz jest zapisany tylko w `localStorage` tej aplikacji na telefonie. Nie ma go
 | `index.html`, `style.css`, `app.js` | interfejs, zapis dnia, sumy i cele |
 | `data.js` | produkty, jadłospis A/B i cele z lekcji |
 | `llm.js` | zapytanie do Claude z wyszukiwaniem w sieci |
+| `match.js` | lokalne dopasowanie opisu do moich produktów (bez zapytania do AI) |
+| `sync.js` | kopia i synchronizacja z prywatnym repo przez API GitHuba |
 | `sw.js`, `manifest.webmanifest`, `icons/` | instalacja na ekranie głównym, działanie offline |
 | `vendor/anthropic-sdk-*.mjs` | SDK zbudowane do jednego pliku (`scripts/build-sdk.sh <wersja>`) |
 
