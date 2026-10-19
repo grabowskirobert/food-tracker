@@ -2,11 +2,13 @@
 
 Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cele dzienne: 2250–2550 kcal, białko ≥ 110 g, nasycone < 19 g (7% energii), błonnik ≥ 25 g, warzywa i owoce ≥ 400 g, sól < 5 g. Tygodniowe: ryba 2×, strączkowe 2×, czerwone mięso i wędliny ≤ 500 g.
 
-- Dzień A, Dzień B albo Własny: gramy w planie edytowalne, każdy posiłek można pominąć.
-- „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Opis pojawia się od razu jako wiersz w „Dodatkowe” ze znaczkiem ładowania, a wynik zastępuje go w miejscu (bez okna potwierdzenia). „Cofnij” w komunikacie usuwa wynik, a ołówek przy pozycji otwiera edycję nazwy, gramów, wartości na 100 g, kategorii i notatki. Błąd zostaje w wierszu z przyciskiem „Ponów”.
-- Danie z listą składników („195 g: zapiekana owsianka z bananem, skyrem, borówkami”) to **jedna pozycja**: Claude szuka przepisu, liczy wartości na 100 g gotowego dania (składniki sprawdza w tle) i ocenia, jaka część to warzywa i owoce. Danie zapamiętuje się pod Twoimi słowami, więc „owsianka 200 g” znajduje je lokalnie.
-- Produkty raz sprawdzone trafiają do „moich produktów” i przy kolejnym opisie model bierze je stamtąd zamiast szukać.
-- „+”: dodanie ręczne z etykiety (bez API). Nazwa podpowiada produkty z Twojej bazy dopiero po wpisaniu fragmentu; wszystko, co dodasz lub poprawisz, zapisuje się w „moich produktach”.
+- Dzień to zwykła lista „Zjedzone”. Jadłospis A/B jest w zwijanej sekcji „Inspiracja”: „+ Dodaj” przy posiłku dopisuje jego produkty do dnia. Dni zapisane jeszcze w trybie A/B zamieniają się w listę przy pierwszym otwarciu.
+- Na dole trzy sposoby dodawania:
+  - **Ręcznie**: wartości z etykiety (bez API). „Ostatnio jedzone” wypełnia formularz czymś z ostatnich dwóch tygodni.
+  - **Opisz**: opis po polsku i opcjonalnie waga porcji. Claude podaje wartości na 100 g z tabel USDA / IŻŻ, a w sieci szuka tylko produktów markowych i nieznanych dań (najwyżej 2 wyszukania). Danie z listą składników („owsianka z bananem, skyrem”) to jedna pozycja.
+  - **Zdjęcie**: zdjęcie posiłku, opcjonalnie opis i waga. Zdjęcie jest zmniejszane do 1024 px przed wysłaniem.
+- Wynik pojawia się od razu jako wiersz ze znaczkiem ładowania i zastępuje go w miejscu. „Cofnij” usuwa wynik, ołówek otwiera edycję.
+- Koszty: ⋯ → „Wydane w tym miesiącu” pokazuje 50 ostatnich zapytań z tokenami wejścia/wyjścia, liczbą wyszukań i kosztem. `test.html` (link pod listą) porównuje modele na tych samych przykładach.
 - Waga i talia: jedna linijka na dzień, pod podsumowaniem. Pokazuje średnią wagi z 7 dni i zmianę względem poprzedniego tygodnia oraz zmianę talii.
 - Dane: najpierw `localStorage` (jeden wpis na dzień, `ft:day:RRRR-MM-DD`), a kopia i synchronizacja telefon ↔ komputer w osobnym **prywatnym** repo (patrz niżej). Eksport i import JSON w ustawieniach to dodatkowa kopia.
 
@@ -30,7 +32,7 @@ Klucz jest zapisany tylko w `localStorage` tej aplikacji na telefonie. Nie ma go
 
 ## Kopia danych i synchronizacja
 
-Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera `days/RRRR-MM.json` (dni z posiłkami, wagą i talią) oraz `foods.json` (moje produkty). Tego repo nie wolno robić publicznym.
+Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera `days/RRRR-MM.json` (dni z posiłkami, wagą i talią) (starszy `foods.json` z „moimi produktami” nie jest już używany). Tego repo nie wolno robić publicznym.
 
 1. Utwórz prywatne repo z README (puste repo też zadziała, pierwszy zapis tworzy pierwszy commit).
 2. GitHub → Settings → Developer settings → Fine-grained tokens: dostęp tylko do tego repo, uprawnienie *Contents: Read and write*, data ważności do roku.
@@ -46,8 +48,8 @@ Scalanie: każdy dzień i produkt ma znacznik czasu `upd`, wygrywa nowsza wersja
 |---|---|
 | `index.html`, `style.css`, `app.js` | interfejs, zapis dnia, sumy i cele |
 | `data.js` | produkty, jadłospis A/B i cele z lekcji |
-| `llm.js` | zapytanie do Claude z wyszukiwaniem w sieci |
-| `match.js` | lokalne dopasowanie opisu do moich produktów (bez zapytania do AI) |
+| `llm.js` | zapytanie do Claude (opis lub zdjęcie), koszt zapytania |
+| `test.html`, `test.js` | porównanie modeli na przykładach |
 | `sync.js` | kopia i synchronizacja z prywatnym repo przez API GitHuba |
 | `boot.js` | gdy skrypty aplikacji nie wystartują, czyści pamięć podręczną i przeładowuje stronę raz |
 | `sw.js`, `manifest.webmanifest`, `icons/` | instalacja na ekranie głównym, działanie offline |

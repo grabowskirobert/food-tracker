@@ -3,8 +3,8 @@
 // minutes apart could come from different deployments and no longer fit together). When the network
 // fails, the precache answers. It is never written at runtime, so it can't mix versions.
 // Bump CACHE with every change to a file below.
-const CACHE = 'ft-v9';
-const SHELL = ['./', 'index.html', 'style.css', 'boot.js', 'app.js', 'data.js', 'llm.js', 'match.js', 'sync.js',
+const CACHE = 'ft-v10';
+const SHELL = ['./', 'index.html', 'style.css', 'boot.js', 'app.js', 'data.js', 'llm.js', 'sync.js',
   'vendor/anthropic-sdk-0.131.0.mjs', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

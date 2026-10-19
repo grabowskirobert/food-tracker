@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.anthropic.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https://api.anthropic.com https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Food tracker</title>
 <meta name="theme-color" content="#f7f7f5" media="(prefers-color-scheme: light)">
@@ -36,6 +36,21 @@
     <div class="week" id="week"></div>
   </section>
 
+  <details class="card inspo" id="inspo">
+    <summary><span>Inspiracja</span><small>jadłospis A / B</small></summary>
+    <div class="seg" role="radiogroup" aria-label="Jadłospis" id="seg">
+      <button type="button" role="radio" data-plan="A">Dzień A</button>
+      <button type="button" role="radio" data-plan="B">Dzień B</button>
+    </div>
+    <div id="meals"></div>
+  </details>
+
+  <section class="eaten">
+    <h2>Zjedzone <span id="xk"></span></h2>
+    <ul id="items" class="rows"></ul>
+    <p class="empty" id="noitems">Nic jeszcze nie dodano. Wybierz niżej, jak dodać posiłek.</p>
+  </section>
+
   <section class="card body">
     <div class="brow">
       <label>Waga <span><input id="bw" type="number" inputmode="decimal" min="0" step="0.1" placeholder="—" aria-label="Waga w kilogramach"> kg</span></label>
@@ -43,37 +58,39 @@
     </div>
     <div class="trend" id="btrend"></div>
   </section>
-
-  <div class="seg" role="radiogroup" aria-label="Plan dnia" id="seg">
-    <button type="button" role="radio" data-plan="free">Własny</button>
-    <button type="button" role="radio" data-plan="A">Dzień A</button>
-    <button type="button" role="radio" data-plan="B">Dzień B</button>
-  </div>
-
-  <section id="meals"></section>
-
-  <section class="extras">
-    <h2>Dodatkowe <span id="xk"></span></h2>
-    <ul id="items" class="rows"></ul>
-    <p class="empty" id="noitems">Opisz poniżej, co zjadłeś poza planem, albo dodaj produkt ręcznie.</p>
-  </section>
 </main>
 
-<form class="composer" id="composer">
-  <button type="button" class="icon plus" id="manualbtn" aria-label="Dodaj ręcznie">+</button>
-  <textarea id="q" rows="1" enterkeyhint="send" placeholder="Co zjadłeś?" aria-label="Co zjadłeś"></textarea>
-  <button type="submit" class="primary" id="ask">Policz</button>
-</form>
+<nav class="dock" aria-label="Dodaj posiłek">
+  <button type="button" id="manualbtn">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+    <span>Ręcznie</span>
+  </button>
+  <button type="button" id="aibtn" class="main">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.9L19 9.5l-5.2 1.6L12 16l-1.8-4.9L5 9.5l5.2-1.6zM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+    <span>Opisz</span>
+  </button>
+  <button type="button" id="photobtn">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <span>Zdjęcie</span>
+  </button>
+  <input type="file" id="photofile" accept="image/*" hidden>
+</nav>
 <div class="toast" id="toast" role="status" hidden></div>
 
-<dialog id="match" class="sheet">
-  <form method="dialog">
-    <h2>Czy chodzi o…</h2>
-    <p class="hint">Te produkty są w Twojej bazie, więc nie trzeba pytać AI. Wybierz „szukaj w sieci”, jeśli to coś innego.</p>
-    <ul id="mitems" class="rows"></ul>
+<dialog id="ai" class="sheet">
+  <form method="dialog" id="aiform">
+    <h2 id="aititle">Co zjadłeś?</h2>
+    <img id="aiimg" class="shot" alt="Zdjęcie posiłku" hidden>
+    <label><span id="ailabel">Opis</span>
+      <textarea id="q" rows="3" enterkeyhint="done" autocapitalize="sentences" placeholder="np. 2 jajka sadzone, kromka chleba razowego"></textarea>
+    </label>
+    <label class="gline">Waga porcji
+      <span><input id="qg" type="number" inputmode="decimal" min="0" step="any" placeholder="opcjonalnie"> g</span>
+    </label>
+    <p class="hint" id="aihint"></p>
     <div class="actions">
-      <button value="cancel">Anuluj</button>
-      <button value="ok" class="primary" id="mok">Dodaj</button>
+      <button value="cancel" formnovalidate>Anuluj</button>
+      <button value="ok" class="primary" id="aiok">Policz</button>
     </div>
   </form>
 </dialog>
@@ -81,8 +98,11 @@
 <dialog id="manual" class="sheet">
   <form method="dialog" id="mform">
     <h2 id="mtitle">Dodaj ręcznie</h2>
+    <div id="mrecent" class="recent" hidden>
+      <small>Ostatnio jedzone</small>
+      <div class="chips" id="mrecentlist"></div>
+    </div>
     <label>Nazwa <input id="mn" required autocomplete="off" autocapitalize="sentences"></label>
-    <ul id="msug" class="sug" hidden></ul>
     <div class="grid">
       <label>Zjedzone, g <input id="mg" type="number" inputmode="decimal" min="0" step="any" required></label>
       <label>kcal / 100 g <input id="mk" type="number" inputmode="decimal" min="0" step="any" required></label>
@@ -101,9 +121,8 @@
         <button type="button" role="radio" data-v="red_meat">czerwone mięso</button>
       </div>
     </div>
-    <p class="hint">Gdy znasz tylko sumę dania (np. z menu restauracji), wpisz 100 g i sumy w polach „/ 100 g”.</p>
-    <p class="hint">Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania (np. 35).</p>
-    <label id="mnoterow">Notatka <textarea id="mnote" rows="3" placeholder="np. składniki i źródło"></textarea></label>
+    <p class="hint">Znasz tylko sumy dania (np. z menu)? Wpisz 100 g i sumy w polach „/ 100 g”. Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania.</p>
+    <label id="mnoterow">Notatka <textarea id="mnote" rows="3"></textarea></label>
     <div class="actions">
       <button value="cancel" formnovalidate>Anuluj</button>
       <button value="ok" class="primary" id="msubmit">Dodaj</button>
@@ -118,28 +137,24 @@
     <label>Klucz API Anthropic
       <input id="skey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
     </label>
-    <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków (konsola Anthropic → Workspaces → Limits).</p>
+    <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków.</p>
     <label>Model <select id="smodel"></select></label>
-    <p class="hint" id="scost"></p>
-    <div class="actions wrap">
-      <button type="button" id="sexport">Eksportuj dane</button>
-      <button type="button" id="simport">Importuj dane</button>
-      <input type="file" id="sfile" accept="application/json,.json" hidden>
-    </div>
-    <p class="hint">Dane zapisują się najpierw w telefonie, a kopia idzie do repo GitHub (sekcja niżej). Eksport do Plików to dodatkowe zabezpieczenie.</p>
+    <details class="costs">
+      <summary id="scost"></summary>
+      <ul id="slog" class="rows small"></ul>
+      <p class="hint"><a href="test.html">Porównaj modele na przykładach</a></p>
+    </details>
     <label>Token GitHub (kopia danych)
       <input id="ghtoken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
     </label>
     <label>Repo z danymi <input id="ghrepo" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
     <p class="hint" id="syncstat"></p>
-    <div class="actions wrap"><button type="button" id="syncnow">Synchronizuj teraz</button></div>
-    <p class="hint">Prywatne repo, token fine-grained tylko do niego z uprawnieniem Contents: Read and write. Dane zapisują się w plikach miesięcznych, a telefon i komputer scalają je po czasie ostatniej zmiany dnia.</p>
-    <button type="button" id="sfill" hidden></button>
-    <p class="hint" id="sfillmsg" hidden></p>
-    <details>
-      <summary>Moje produkty</summary>
-      <ul id="slib" class="rows small"></ul>
-    </details>
+    <div class="actions wrap">
+      <button type="button" id="syncnow">Synchronizuj teraz</button>
+      <button type="button" id="sexport">Eksportuj</button>
+      <button type="button" id="simport">Importuj</button>
+      <input type="file" id="sfile" accept="application/json,.json" hidden>
+    </div>
     <div class="actions">
       <button value="cancel">Zamknij</button>
       <button value="ok" class="primary">Zapisz</button>
