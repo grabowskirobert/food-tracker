@@ -132,12 +132,6 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .primary:disabled { opacity: .5; }
 @media (min-width: 600px) { .composer { padding-left: calc(50% - 270px); padding-right: calc(50% - 270px); } }
 
-.status {
-  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(70px + var(--safe-b)); z-index: 7;
-  display: flex; align-items: center; gap: 10px; background: var(--fg); color: var(--bg);
-  padding: 8px 8px 8px 14px; border-radius: 999px; font-size: .85rem; white-space: nowrap;
-}
-.status button { border: 0; background: color-mix(in srgb, var(--bg) 20%, transparent); color: inherit; border-radius: 999px; padding: 4px 10px; font-size: .8rem; }
 .spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast {
@@ -200,3 +194,24 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .body input:focus { outline: none; border-color: var(--accent); background: var(--card); }
 .trend { margin-top: 10px; font-size: .8rem; color: var(--muted); display: grid; gap: 2px; }
 .trend:empty { display: none; }
+
+.rows li.item { display: block; padding: 10px 0; }
+.ihead { display: flex; align-items: flex-start; gap: 4px; }
+.iname { flex: 1; min-width: 0; font-size: .95rem; padding-top: 4px; overflow-wrap: anywhere; }
+.rows li.item .meta, .rows li.item .note { display: block; margin-top: 2px; padding-right: 4px; }
+.rows li.item .note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; cursor: pointer; }
+.rows li.item .note.open { display: block; }
+.ifoot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.ifoot .rk { width: auto; font-size: 1rem; font-weight: 600; }
+.edit, .ihead .del { width: 32px; height: 32px; flex-shrink: 0; }
+.edit { font-size: 1.05rem; color: var(--muted); }
+.item.pend .iname { color: var(--muted); }
+.rows li.item.pend .meta { display: flex; align-items: center; gap: 6px; }
+.item.pend .spin { width: 11px; height: 11px; flex-shrink: 0; }
+.item.pend.err .meta { color: var(--bad); }
+.item.pend { animation: pend 1.6s ease-in-out infinite; }
+.item.pend.err { animation: none; }
+@keyframes pend { 50% { opacity: .55; } }
+.ihead .chip { margin-top: 3px; }
+.sheet textarea { font-size: 16px; color: var(--fg); padding: 9px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); resize: vertical; font-family: inherit; }
+.sheet textarea:focus { outline: none; border-color: var(--accent); }

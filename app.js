@@ -29,6 +29,7 @@ const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return N
 
 let cur = noon(new Date());
 let day;
+const pending = []; // lookups in flight: { id, dayKey, text, step, err, ctl, timer }
 
 function loadDay() {
   // Days start as "Własny"; A and B stay one tap away as a template.
@@ -67,6 +68,7 @@ function remember(f, alias) {
     pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8), upd: Date.now(),
   };
   saveFoods(foods);
+  return { key, created: !old.n };
 }
 
 // --- nutrition -------------------------------------------------------------------
@@ -214,7 +216,9 @@ function renderMeals() {
   });
 }
 
-function itemRow(it, { onGrams, onDelete }) {
+const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'źródło'; } };
+
+function itemRow(it, { onGrams, onDelete, onEdit }) {
   const rk = h('span', { class: 'rk' });
   const meta = h('small', { class: 'meta' });
   const upd = () => {
@@ -222,31 +226,37 @@ function itemRow(it, { onGrams, onDelete }) {
     rk.textContent = fmt(v.k);
     meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
       + (CATS[it.cat] ? ` · ${CATS[it.cat]}` : ''));
-    if (it.url && /^https?:\/\//.test(it.url)) meta.append(' · ', h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer' }, it.src || 'źródło'));
-    else if (it.src && it.src !== 'szacunek') meta.append(' · ', it.src);
+    // The link shows the site, not the model's long source description (that stays in the tooltip).
+    if (/^https?:\/\//.test(it.url || '')) meta.append(' · ', h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', title: it.src || '' }, hostOf(it.url)));
+    else if (it.src && it.src !== 'szacunek') meta.append(' · ', it.src.slice(0, 40));
   };
   upd();
+  // Long notes (a dish's recipe) stay at two lines until tapped.
+  const note = it.note ? h('small', { class: 'note', title: 'Dotknij, żeby rozwinąć', onclick: (e) => e.currentTarget.classList.toggle('open') }, it.note) : null;
   return h('li', { class: 'item' },
-    h('div', { class: 'nm' },
-      h('span', {}, it.n, it.src === 'szacunek' ? h('em', { class: 'est' }, 'szacunek') : null),
-      meta,
-      it.note ? h('small', { class: 'note' }, it.note) : null),
-    h('label', { class: 'gw' }, gramInput(it.g, (g) => { it.g = g; upd(); onGrams?.(); }, 'gramy: ' + it.n), h('span', {}, 'g')),
-    rk,
-    onDelete ? h('button', { type: 'button', class: 'icon del', 'aria-label': 'Usuń: ' + it.n, onclick: onDelete }, '×') : null);
+    h('div', { class: 'ihead' },
+      h('span', { class: 'iname' }, it.n, it.src === 'szacunek' ? h('em', { class: 'est' }, 'szacunek') : null),
+      onEdit ? h('button', { type: 'button', class: 'icon edit', 'aria-label': 'Edytuj: ' + it.n, onclick: onEdit }, '✎') : null,
+      onDelete ? h('button', { type: 'button', class: 'icon del', 'aria-label': 'Usuń: ' + it.n, onclick: onDelete }, '×') : null),
+    meta, note,
+    h('div', { class: 'ifoot' },
+      h('label', { class: 'gw' }, gramInput(it.g, (g) => { it.g = g; upd(); onGrams?.(); }, 'gramy: ' + it.n), h('span', {}, 'g')),
+      rk));
 }
 
 function renderItems() {
   const ul = $('#items');
+  const here = pending.filter((p) => p.dayKey === keyOf(cur));
   ul.replaceChildren(...day.items.map((it, i) => itemRow(it, {
     onGrams: () => { saveDay(); refresh(); },
+    onEdit: () => openItemDialog(it),
     onDelete: () => {
       const [removed] = day.items.splice(i, 1);
       saveDay(); render();
       toast(`Usunięto: ${removed.n}`, 'Cofnij', () => { day.items.splice(i, 0, removed); saveDay(); render(); });
     },
-  })));
-  $('#noitems').hidden = day.items.length > 0;
+  })), ...here.map(pendingRow));
+  $('#noitems').hidden = day.items.length > 0 || here.length > 0;
 }
 
 function refresh() {
@@ -336,13 +346,10 @@ q.addEventListener('input', () => { grow(); store.set('draft', q.value); });
 q.value = store.get('draft', ''); grow();
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
 
-let abort;
-$('#cancel').onclick = () => abort?.abort();
-
 $('#composer').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = q.value.trim();
-  if (!text || abort) return;
+  if (!text) return;
   // The "Czy chodzi o…" sheet only appears when at least one part is a confident match; a weak
   // keyword hit (an ingredient of a dish, say) is not worth interrupting for, so Claude gets the text.
   const segs = matchText(text, library());
@@ -404,113 +411,162 @@ function showMatch(segs) {
     }
     if (added) { saveDay(); render(); }
     const rest = rows.filter((r) => r.pick === 'web').map((r) => r.seg);
-    if (rest.length) { q.value = rest.join(', '); grow(); askClaude(q.value); }
+    if (rest.length) askClaude(rest.join(', '));
     else { clearDraft(); toast(`Dodano ${added} z moich produktów, bez zapytania do API.`); }
   };
   dlg.showModal();
 }
 
-async function askClaude(text) {
-  const apiKey = store.get('apikey', '');
-  if (!apiKey) { openSettings('Wpisz klucz API, żeby liczyć wartości z opisu.'); return; }
-  abort = new AbortController();
-  setBusy(true);
+// --- lookups ----------------------------------------------------------------------
+// A description that needs Claude appears at once as a row in "Dodatkowe" with a spinner, and the
+// result replaces it in place. Several lookups can run side by side, and a result always lands on
+// the day it was typed for, even if another day is on screen by then.
+const STEPS = ['Szukam wartości w sieci…', 'Sprawdzam źródła…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
+const plPos = (n) => (n === 1 ? '1 pozycję' : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? `${n} pozycje` : `${n} pozycji`);
+
+function pendingRow(p) {
+  const st = h('span', {}, p.err || STEPS[p.step]);
+  p.stEl = st;
+  return h('li', { class: 'item pend' + (p.err ? ' err' : ''), 'aria-busy': String(!p.err) },
+    h('div', { class: 'ihead' },
+      h('span', { class: 'iname' }, p.text),
+      p.err ? h('button', { type: 'button', class: 'chip', onclick: () => { runLookup(p); renderItems(); } }, 'Ponów') : null,
+      h('button', {
+        type: 'button', class: 'icon del', 'aria-label': p.err ? 'Usuń' : 'Przerwij szukanie',
+        onclick: () => { if (p.err) { pending.splice(pending.indexOf(p), 1); renderItems(); } else p.ctl.abort(); },
+      }, '×')),
+    h('small', { class: 'meta' }, p.err ? null : h('i', { class: 'spin' }), st));
+}
+
+function askClaude(text) {
+  if (!store.get('apikey', '')) { openSettings('Wpisz klucz API, żeby liczyć wartości z opisu.'); return; }
+  const p = { id: Date.now() + Math.random(), dayKey: keyOf(cur), text, step: 0, err: '' };
+  pending.push(p);
+  clearDraft();
+  runLookup(p);
+  renderItems();
+  $('#items').lastElementChild?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+async function runLookup(p) {
+  p.err = ''; p.step = 0;
+  p.ctl = new AbortController();
+  clearInterval(p.timer);
+  p.timer = setInterval(() => {
+    p.step = Math.min(p.step + 1, STEPS.length - 1);
+    if (p.stEl && !p.err) p.stEl.textContent = STEPS[p.step];
+  }, 12000);
   try {
-    const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
+    const { items, cost } = await analyze({ apiKey: store.get('apikey', ''), model: currentModel(), text: p.text, signal: p.ctl.signal });
     addCost(cost);
-    showPreview(text, items.map((x) => ({
-      n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0, k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre,
-      sl: x.salt, cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note,
-    })), cost);
+    finishLookup(p, items, cost);
   } catch (err) {
-    toast(friendlyError(err));
-  } finally {
-    abort = null;
-    setBusy(false);
+    clearInterval(p.timer);
+    if (p.ctl.signal.aborted) {
+      pending.splice(pending.indexOf(p), 1);
+      if (!q.value) { q.value = p.text; store.set('draft', p.text); grow(); } // give the text back for editing
+    } else {
+      p.err = friendlyError(err);
+    }
+    renderItems();
   }
+}
+
+function finishLookup(p, items, cost) {
+  clearInterval(p.timer);
+  pending.splice(pending.indexOf(p), 1);
+  const added = items.map((x) => ({
+    id: Date.now() + Math.random(), n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0,
+    k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
+    cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note,
+  }));
+  // Results are kept as products. A single result is the dish the user described: their own words
+  // become its alias, so "owsianka z bananem" finds it locally next time.
+  const created = added.map((it) => remember(it, added.length === 1 ? aliasOf(p.text) : '')).filter((r) => r.created).map((r) => r.key);
+  addItemsToDay(p.dayKey, added);
+  if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  toast(`Dodano ${plPos(added.length)} · ≈ ${usd(cost)}`, 'Cofnij', () => {
+    removeItemsFromDay(p.dayKey, added.map((it) => it.id));
+    const foods = allFoods();
+    for (const key of created) foods[key] = { del: true, upd: Date.now() };
+    saveFoods(foods);
+  });
+}
+
+function addItemsToDay(dayKey, items) {
+  if (dayKey === keyOf(cur)) { day.items.push(...items); saveDay(); render(); return; }
+  const d = store.get('day:' + dayKey, null) || { plan: 'free', over: {}, skip: {}, items: [] };
+  d.items.push(...items); d.upd = Date.now();
+  store.set('day:' + dayKey, d); sync.dirtyDay(dayKey);
+}
+function removeItemsFromDay(dayKey, ids) {
+  if (dayKey === keyOf(cur)) { day.items = day.items.filter((it) => !ids.includes(it.id)); saveDay(); render(); return; }
+  const d = store.get('day:' + dayKey, null);
+  if (!d) return;
+  d.items = d.items.filter((it) => !ids.includes(it.id)); d.upd = Date.now();
+  store.set('day:' + dayKey, d); sync.dirtyDay(dayKey);
 }
 
 const monthKey = () => 'cost:' + keyOf(new Date()).slice(0, 7);
 function addCost(usd) { store.set(monthKey(), store.get(monthKey(), 0) + usd); }
 const usd = (x) => x.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' $';
 
-let busyTimer;
-function setBusy(on) {
-  $('#status').hidden = !on;
-  $('#ask').disabled = on;
-  document.body.classList.toggle('busy', on);
-  clearInterval(busyTimer);
-  if (!on) return;
-  const steps = ['Szukam wartości w sieci…', 'Sprawdzam źródła…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
-  let i = 0;
-  $('#statustext').textContent = steps[0];
-  busyTimer = setInterval(() => { i = Math.min(i + 1, steps.length - 1); $('#statustext').textContent = steps[i]; }, 12000);
-}
-
-function showPreview(text, items, cost) {
-  const dlg = $('#preview');
-  const total = h('li', { class: 'sum' });
-  const updTotal = () => { total.textContent = `Razem ${fmt(items.reduce((s, it) => s + nutr(it, it.g).k, 0))} kcal`; };
-  const ul = $('#pitems');
-  const draw = () => {
-    ul.replaceChildren(...items.map((it, i) => itemRow(it, {
-      onGrams: updTotal,
-      onDelete: () => { items.splice(i, 1); draw(); },
-    })), total);
-    updTotal();
-    $('#padd').disabled = items.length === 0;
-  };
-  draw();
-  dlg.onclose = () => {
-    if (dlg.returnValue !== 'ok') return;
-    for (const it of items) {
-      day.items.push({ ...it, id: Date.now() + Math.random() });
-      // A single result is the dish the user described: keep their own words as its alias, so
-      // "owsianka z bananem" finds it locally next time.
-      if ($('#psave').checked) remember(it, items.length === 1 ? aliasOf(text) : '');
-    }
-    saveDay(); render();
-    clearDraft();
-    toast(`Dodano ${items.length} ${items.length === 1 ? 'pozycję' : 'pozycje'} · zapytanie ≈ ${usd(cost)}`);
-  };
-  dlg.returnValue = '';
-  dlg.showModal();
-}
-
-// --- manual add -------------------------------------------------------------------
+// --- add by hand / edit an item ----------------------------------------------------
 const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl' };
-$('#manualbtn').onclick = () => {
+$('#manualbtn').onclick = () => openItemDialog(null);
+
+// One sheet for both: adding a product by hand (editing = null) and correcting an item already logged.
+// Values are per 100 g; the amount eaten is separate.
+function openItemDialog(editing) {
   const lib = library();
   const sel = $('#mlib');
-  sel.replaceChildren(h('option', { value: '' }, '— wpisz nowy —'),
-    ...Object.entries(lib).sort((a, b) => a[1].n.localeCompare(b[1].n, 'pl')).map(([k, f]) => h('option', { value: k }, f.n)));
-  sel.onchange = () => {
-    const f = lib[sel.value];
-    if (!f) return;
-    for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
-    $('#mvf').checked = vfShare(f.vf) >= 50;
-    $('#mcat').value = f.cat || '';
-    $('#mg').focus();
-  };
-  $('#mform').reset();
   const dlg = $('#manual');
+  $('#mtitle').textContent = editing ? 'Edytuj pozycję' : 'Dodaj ręcznie';
+  $('#mlibrow').hidden = !!editing;
+  $('#mnoterow').hidden = !editing;
+  $('#msubmit').textContent = editing ? 'Zapisz' : 'Dodaj';
+  $('#msavet').textContent = editing ? 'Zaktualizuj też w moich produktach' : 'Zapamiętaj w moich produktach';
+  $('#mform').reset();
+
+  const fill = (f) => {
+    for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
+    $('#mvf').value = vfShare(f.vf) || '';
+    $('#mcat').value = f.cat || '';
+  };
+  if (editing) {
+    fill(editing);
+    $('#mg').value = editing.g || '';
+    $('#mnote').value = editing.note || '';
+    $('#msave').checked = !!customFoods()[editing.n.toLowerCase()];
+  } else {
+    sel.replaceChildren(h('option', { value: '' }, '— wpisz nowy —'),
+      ...Object.entries(lib).sort((a, b) => a[1].n.localeCompare(b[1].n, 'pl')).map(([k, f]) => h('option', { value: k }, f.n)));
+    sel.onchange = () => { const f = lib[sel.value]; if (f) { fill(f); $('#mg').focus(); } };
+  }
+
   dlg.returnValue = '';
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
-    const f = lib[sel.value];
-    // Keep a dish's fractional vegetable/fruit share when the checkbox was left as it came from the library.
-    const vf = f && $('#mvf').checked === vfShare(f.vf) >= 50 ? f.vf : $('#mvf').checked;
-    const it = { n: $('#mn').value.trim(), g: num($('#mg').value), vf, cat: $('#mcat').value, id: Date.now() };
-    for (const c of NUT) it[c] = num($(MF[c]).value);
-    if (f && f.n === it.n) Object.assign(it, { url: f.url || '', src: f.src || 'moje produkty' });
-    else it.src = 'etykieta';
-    if (!it.n) return;
-    day.items.push(it);
-    if ($('#msave').checked) remember(it);
+    const n = $('#mn').value.trim();
+    if (!n) return;
+    const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: $('#mcat').value };
+    // An empty salt field means "unknown" (flagged in the day's salt bar), not zero.
+    for (const c of NUT) vals[c] = c === 'sl' && $(MF.sl).value === '' ? undefined : num($(MF[c]).value);
+    if (editing) {
+      Object.assign(editing, vals, { note: $('#mnote').value.trim() });
+      if ($('#msave').checked) remember({ ...editing });
+    } else {
+      const f = lib[sel.value];
+      const it = { ...vals, id: Date.now() };
+      if (f && f.n === it.n) Object.assign(it, { url: f.url || '', src: f.src || 'moje produkty' });
+      else it.src = 'etykieta';
+      day.items.push(it);
+      if ($('#msave').checked) remember(it);
+    }
     saveDay(); render();
   };
   dlg.showModal();
-};
+}
 
 // --- settings ---------------------------------------------------------------------
 // Stored under a new key so earlier saved choices fall back to the new default (Sonnet).
@@ -556,13 +612,12 @@ $('#sfill').onclick = async () => {
   const apiKey = store.get('apikey', '');
   if (!apiKey) { toast('Najpierw wpisz klucz API.'); return; }
   const list = missingSalt();
-  $('#settings').close();
-  abort = new AbortController();
-  setBusy(true);
+  const btn = $('#sfill'), msg = $('#sfillmsg');
+  btn.disabled = true; btn.textContent = 'Uzupełniam z sieci…'; msg.hidden = true;
   try {
     const text = 'Fill in the values for these products. Return exactly one item per line, in this order, '
       + 'keeping each name exactly as written, grams 100:\n' + list.map(([, f]) => '- ' + f.n).join('\n');
-    const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
+    const { items, cost } = await analyze({ apiKey, model: currentModel(), text });
     addCost(cost);
     const foods = allFoods();
     const fixed = {};
@@ -583,12 +638,12 @@ $('#sfill').onclick = async () => {
       if (changed) { d.upd = Date.now(); store.set(k, d); sync.dirtyDay(k.slice(4)); }
     }
     loadDay(); render();
-    toast(`Uzupełnione produkty: ${Object.keys(fixed).length} · ≈ ${usd(cost)}`);
+    msg.textContent = `Uzupełnione produkty: ${Object.keys(fixed).length} · ≈ ${usd(cost)}`; msg.hidden = false;
   } catch (err) {
-    toast(friendlyError(err));
+    msg.textContent = friendlyError(err); msg.hidden = false;
   } finally {
-    abort = null;
-    setBusy(false);
+    btn.disabled = false;
+    drawFill();
   }
 };
 

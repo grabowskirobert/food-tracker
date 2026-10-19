@@ -60,7 +60,7 @@ const SAVE_TOOL = {
             veg_fruit_g: NUM('Grams of vegetables and fruit in 100 g of this food: 100 for a plain vegetable or fruit, 0 for none, in between for a dish (fruit and vegetables count; potatoes, legumes, juice and dried fruit do not)'),
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "Open Food Facts", "USDA FoodData Central", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },
-            note: { type: 'string', description: 'Short Polish note: how the amount was converted to grams, assumptions, uncertainty. For a dish: the recipe used and the ingredient amounts assumed. Empty string if none.' },
+            note: { type: 'string', description: 'Short Polish note: how the amount was converted to grams, assumptions, uncertainty. For a dish: the recipe used and the main ingredient amounts assumed. At most 250 characters. Empty string if none.' },
           },
         },
       },
@@ -83,7 +83,7 @@ For a dish:
 2. Search the web for a recipe of that dish (a recipe page or a food database entry), take its ingredient list and quantities, and where the user named the ingredients use those. Look up each ingredient's nutrition per 100 g the same way as for a separate food. These lookups are internal: do not return the ingredients as items.
 3. Compute the values per 100 g of the finished dish: sum the ingredients, divide by the finished weight, and apply cooking or baking losses only when the recipe states them. The user will save the result and reuse it, so it must be per 100 g of the dish as eaten.
 4. veg_fruit_g is the share of vegetables and fruit in the dish. Decide for each ingredient yourself whether it is a vegetable or fruit.
-5. source_url is the recipe page; note lists the ingredient amounts you assumed, briefly. If you found no recipe, assume a typical one, say so in note and set source_name "szacunek".
+5. source_url is the recipe page; note lists the main ingredient amounts you assumed, in at most 250 characters. If you found no recipe, assume a typical one, say so in note and set source_name "szacunek".
 
 When done, call zapisz_produkty once with all items. Write names and notes in Polish. Do not write any other answer.`;
 

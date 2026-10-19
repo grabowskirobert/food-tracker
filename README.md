@@ -3,7 +3,7 @@
 Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cele dzienne: 2250–2550 kcal, białko ≥ 110 g, nasycone < 19 g (7% energii), błonnik ≥ 25 g, warzywa i owoce ≥ 400 g, sól < 5 g. Tygodniowe: ryba 2×, strączkowe 2×, czerwone mięso i wędliny ≤ 500 g.
 
 - Dzień A, Dzień B albo Własny: gramy w planie edytowalne, każdy posiłek można pominąć.
-- „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Przed dodaniem sprawdzasz i poprawiasz gramy.
+- „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Opis pojawia się od razu jako wiersz w „Dodatkowe” ze znaczkiem ładowania, a wynik zastępuje go w miejscu (bez okna potwierdzenia). „Cofnij” w komunikacie usuwa wynik, a ołówek przy pozycji otwiera edycję nazwy, gramów, wartości na 100 g, kategorii i notatki. Błąd zostaje w wierszu z przyciskiem „Ponów”.
 - Danie z listą składników („195 g: zapiekana owsianka z bananem, skyrem, borówkami”) to **jedna pozycja**: Claude szuka przepisu, liczy wartości na 100 g gotowego dania (składniki sprawdza w tle) i ocenia, jaka część to warzywa i owoce. Danie zapamiętuje się pod Twoimi słowami, więc „owsianka 200 g” znajduje je lokalnie.
 - Produkty raz sprawdzone trafiają do „moich produktów” i przy kolejnym opisie model bierze je stamtąd zamiast szukać.
 - „+”: dodanie ręczne z etykiety albo z listy moich produktów (bez API).

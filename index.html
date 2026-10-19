@@ -60,23 +60,10 @@
 
 <form class="composer" id="composer">
   <button type="button" class="icon plus" id="manualbtn" aria-label="Dodaj ręcznie">+</button>
-  <textarea id="q" rows="1" enterkeyhint="send" placeholder="Co zjadłeś? np. 2 jajka" aria-label="Co zjadłeś"></textarea>
+  <textarea id="q" rows="1" enterkeyhint="send" placeholder="Co zjadłeś?" aria-label="Co zjadłeś"></textarea>
   <button type="submit" class="primary" id="ask">Policz</button>
 </form>
-<div class="status" id="status" hidden><span class="spin"></span><span id="statustext">Szukam wartości w sieci…</span><button type="button" id="cancel">Przerwij</button></div>
 <div class="toast" id="toast" role="status" hidden></div>
-
-<dialog id="preview" class="sheet">
-  <form method="dialog">
-    <h2>Sprawdź i dodaj</h2>
-    <ul id="pitems" class="rows"></ul>
-    <label class="check"><input type="checkbox" id="psave" checked> Zapamiętaj produkty na następny raz</label>
-    <div class="actions">
-      <button value="cancel">Anuluj</button>
-      <button value="ok" class="primary" id="padd">Dodaj</button>
-    </div>
-  </form>
-</dialog>
 
 <dialog id="match" class="sheet">
   <form method="dialog">
@@ -92,8 +79,8 @@
 
 <dialog id="manual" class="sheet">
   <form method="dialog" id="mform">
-    <h2>Dodaj ręcznie</h2>
-    <label>Z moich produktów
+    <h2 id="mtitle">Dodaj ręcznie</h2>
+    <label id="mlibrow">Z moich produktów
       <select id="mlib"><option value="">— wpisz nowy —</option></select>
     </label>
     <label>Nazwa <input id="mn" required autocomplete="off"></label>
@@ -105,6 +92,7 @@
       <label>Nasycone / 100 g <input id="ms" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Błonnik / 100 g <input id="mb" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Sól / 100 g <input id="msl" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Warzywa i owoce / 100 g <input id="mvf" type="number" inputmode="decimal" min="0" max="100" step="any" placeholder="0"></label>
       <label>Kategoria
         <select id="mcat">
           <option value="">inne</option>
@@ -115,11 +103,12 @@
       </label>
     </div>
     <p class="hint">Gdy znasz tylko sumę dania (np. z menu restauracji), wpisz 100 g i sumy w polach „/ 100 g”.</p>
-    <label class="check"><input type="checkbox" id="mvf"> Warzywa lub owoce</label>
-    <label class="check"><input type="checkbox" id="msave" checked> Zapamiętaj produkt</label>
+    <p class="hint">Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania (np. 35).</p>
+    <label id="mnoterow">Notatka <textarea id="mnote" rows="3" placeholder="np. składniki i źródło"></textarea></label>
+    <label class="check"><input type="checkbox" id="msave" checked> <span id="msavet">Zapamiętaj w moich produktach</span></label>
     <div class="actions">
       <button value="cancel" formnovalidate>Anuluj</button>
-      <button value="ok" class="primary">Dodaj</button>
+      <button value="ok" class="primary" id="msubmit">Dodaj</button>
     </div>
   </form>
 </dialog>
@@ -148,6 +137,7 @@
     <div class="actions wrap"><button type="button" id="syncnow">Synchronizuj teraz</button></div>
     <p class="hint">Prywatne repo, token fine-grained tylko do niego z uprawnieniem Contents: Read and write. Dane zapisują się w plikach miesięcznych, a telefon i komputer scalają je po czasie ostatniej zmiany dnia.</p>
     <button type="button" id="sfill" hidden></button>
+    <p class="hint" id="sfillmsg" hidden></p>
     <details>
       <summary>Moje produkty</summary>
       <ul id="slib" class="rows small"></ul>
