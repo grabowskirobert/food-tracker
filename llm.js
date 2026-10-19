@@ -41,10 +41,10 @@ const SAVE_TOOL = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'grams', 'piece_grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'veg_fruit', 'source_name', 'source_url', 'note'],
+          required: ['name', 'grams', 'piece_grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'veg_fruit_g', 'source_name', 'source_url', 'note'],
           properties: {
-            name: { type: 'string', description: 'Polish product name including its form, e.g. "Makaron pełnoziarnisty (ugotowany)"' },
-            grams: NUM('Amount eaten, in grams'),
+            name: { type: 'string', description: 'Polish name of the food or dish including its form, e.g. "Makaron pełnoziarnisty (ugotowany)" or "Zapiekana owsianka z bananem i borówkami". For a dish this is the dish name, never a list of amounts.' },
+            grams: NUM('Amount eaten, in grams (for a dish, the weight of the portion eaten)'),
             piece_grams: NUM('Weight of one piece in grams if the food is counted in pieces (egg, fruit, slice), else 0'),
             kcal: NUM('kcal per 100 g'),
             protein: NUM('Protein, g per 100 g'),
@@ -57,10 +57,10 @@ const SAVE_TOOL = {
               enum: ['fish', 'legumes', 'red_meat', 'none'],
               description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, soy, tofu; red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); none: everything else',
             },
-            veg_fruit: { type: 'boolean', description: 'True for vegetables and fruit (not potatoes, not juice)' },
+            veg_fruit_g: NUM('Grams of vegetables and fruit in 100 g of this food: 100 for a plain vegetable or fruit, 0 for none, in between for a dish (fruit and vegetables count; potatoes, legumes, juice and dried fruit do not)'),
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "Open Food Facts", "USDA FoodData Central", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },
-            note: { type: 'string', description: 'Short Polish note: how the amount was converted to grams, assumptions, uncertainty. Empty string if none.' },
+            note: { type: 'string', description: 'Short Polish note: how the amount was converted to grams, assumptions, uncertainty. For a dish: the recipe used and the ingredient amounts assumed. Empty string if none.' },
           },
         },
       },
@@ -70,12 +70,20 @@ const SAVE_TOOL = {
 
 const SYSTEM = `You convert a meal description into nutrition data for a personal food log. The user has high LDL cholesterol, so saturated fat must be accurate.
 
-For each food in the description:
+First decide what the description contains. It is either a list of separate foods ("2 jajka, banan, 150 g skyru") or a dish: a prepared meal whose ingredients follow its name, after "z"/"ze" or in a list ("zapiekana owsianka z bananem, skyrem, borówkami"). The ingredients of a dish are NOT extra portions. Return one item for the whole dish, never one item per ingredient plus one for the dish. When a dish is followed by something with its own amount and clearly separate ("owsianka z bananem, 2 jajka"), that is another item.
+
+For each separate food:
 1. Work out the amount eaten in grams. Convert pieces, spoons, slices and packages to grams and say how in "note" (e.g. "2 szt. × 60 g").
 2. Get values per 100 g for the form the user ate (raw, dry or cooked; if they do not say, assume the form the amount most plausibly refers to and say so in "note").
    - Look the values up with web search instead of relying on memory. Prefer, in this order: the manufacturer's label or a shop listing for a named brand; Open Food Facts for a named brand; USDA FoodData Central or Polish IŻŻ tables for generic foods. Put the page the numbers came from in source_url.
-3. For a dish (restaurant meal, home recipe), split it into ingredients when the description allows it; otherwise use a comparable dish from a reliable source and say in "note" that it is an estimate.
-4. If no source gives a value (often saturated fat or fibre), estimate it, set source_name "szacunek" if the whole item is estimated, and name the estimated values in "note".
+3. If no source gives a value (often saturated fat or fibre), estimate it, set source_name "szacunek" if the whole item is estimated, and name the estimated values in "note".
+
+For a dish:
+1. If the user gave a weight for it ("195g: …"), that is the amount eaten.
+2. Search the web for a recipe of that dish (a recipe page or a food database entry), take its ingredient list and quantities, and where the user named the ingredients use those. Look up each ingredient's nutrition per 100 g the same way as for a separate food. These lookups are internal: do not return the ingredients as items.
+3. Compute the values per 100 g of the finished dish: sum the ingredients, divide by the finished weight, and apply cooking or baking losses only when the recipe states them. The user will save the result and reuse it, so it must be per 100 g of the dish as eaten.
+4. veg_fruit_g is the share of vegetables and fruit in the dish. Decide for each ingredient yourself whether it is a vegetable or fruit.
+5. source_url is the recipe page; note lists the ingredient amounts you assumed, briefly. If you found no recipe, assume a typical one, say so in note and set source_name "szacunek".
 
 When done, call zapisz_produkty once with all items. Write names and notes in Polish. Do not write any other answer.`;
 
@@ -109,7 +117,7 @@ export async function analyze({ apiKey, model, text, signal }) {
         {
           type: 'web_search_20260209',
           name: 'web_search',
-          max_uses: 6,
+          max_uses: 10,
           user_location: { type: 'approximate', country: 'PL', timezone: 'Europe/Warsaw' },
         },
         SAVE_TOOL,

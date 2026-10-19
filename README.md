@@ -4,6 +4,7 @@ Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cel
 
 - Dzień A, Dzień B albo Własny: gramy w planie edytowalne, każdy posiłek można pominąć.
 - „Co zjadłeś?”: opis po polsku → Claude szuka wartości na 100 g w sieci (etykieta producenta, Open Food Facts, USDA FoodData Central, tabele IŻŻ), przelicza porcje, podaje źródło. Przed dodaniem sprawdzasz i poprawiasz gramy.
+- Danie z listą składników („195 g: zapiekana owsianka z bananem, skyrem, borówkami”) to **jedna pozycja**: Claude szuka przepisu, liczy wartości na 100 g gotowego dania (składniki sprawdza w tle) i ocenia, jaka część to warzywa i owoce. Danie zapamiętuje się pod Twoimi słowami, więc „owsianka 200 g” znajduje je lokalnie.
 - Produkty raz sprawdzone trafiają do „moich produktów” i przy kolejnym opisie model bierze je stamtąd zamiast szukać.
 - „+”: dodanie ręczne z etykiety albo z listy moich produktów (bez API).
 - Waga i talia: jedna linijka na dzień, pod podsumowaniem. Pokazuje średnią wagi z 7 dni i zmianę względem poprzedniego tygodnia oraz zmianę talii.

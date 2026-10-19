@@ -70,9 +70,12 @@ function remember(f, alias) {
 }
 
 // --- nutrition -------------------------------------------------------------------
+// `vf` is the share of vegetables and fruit in a product, in grams per 100 g: 100 for an apple, 0 for
+// bread, in between for a dish. Older records hold true/false.
+const vfShare = (v) => (v === true ? 100 : Number(v) || 0);
 function nutr(f, g) {
   // nosl counts items saved before salt was tracked, so the salt total can say it is incomplete.
-  const v = { vf: f.vf ? g : 0, nosl: f.sl == null && g > 0 ? 1 : 0 };
+  const v = { vf: vfShare(f.vf) * g / 100, nosl: f.sl == null && g > 0 ? 1 : 0 };
   for (const c of NUT) v[c] = (f[c] || 0) * g / 100;
   return v;
 }
@@ -152,7 +155,7 @@ function h(tag, props = {}, ...kids) {
 
 function gramInput(value, onChange, label) {
   return h('input', {
-    type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(value), class: 'g',
+    type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: value ? String(value) : '', placeholder: 'g', class: 'g',
     'aria-label': label, onfocus: (e) => e.target.select(),
     oninput: (e) => onChange(num(e.target.value)),
   });
@@ -340,8 +343,10 @@ $('#composer').addEventListener('submit', (e) => {
   e.preventDefault();
   const text = q.value.trim();
   if (!text || abort) return;
+  // The "Czy chodzi o…" sheet only appears when at least one part is a confident match; a weak
+  // keyword hit (an ingredient of a dish, say) is not worth interrupting for, so Claude gets the text.
   const segs = matchText(text, library());
-  if (segs.some((x) => x.cands.length)) showMatch(segs);
+  if (segs.some((x) => x.sure || x.ambiguous)) showMatch(segs);
   else askClaude(text);
 });
 
@@ -350,12 +355,14 @@ function clearDraft() { q.value = ''; store.del('draft'); grow(); }
 // Known products: pick the match and amount locally; only the rest goes to Claude.
 function showMatch(segs) {
   const lib = library();
-  const rows = segs.map((x) => ({ ...x, pick: x.sure ? x.cands[0].key : (x.cands.length ? '' : 'web') }));
+  // Sure: the product is picked. Ambiguous: the user chooses among the strong candidates. Anything else
+  // (a weak keyword hit) goes to Claude.
+  const rows = segs.map((x) => ({ ...x, pick: x.sure ? x.strong[0].key : x.ambiguous ? '' : 'web' }));
   const ul = $('#mitems');
   const draw = () => {
     ul.replaceChildren(...rows.map((r) => {
       const sel = h('select', { 'aria-label': 'Produkt dla: ' + r.seg },
-        r.cands.length && !r.pick ? h('option', { value: '' }, 'Wybierz…') : null,
+        r.pick === '' ? h('option', { value: '' }, 'Wybierz…') : null,
         r.cands.map((c) => h('option', { value: c.key }, c.f.n)),
         h('option', { value: 'web' }, 'Inne: szukaj w sieci'));
       sel.value = r.pick;
@@ -365,7 +372,7 @@ function showMatch(segs) {
         if (!f) { amt.replaceChildren(); r.g = 0; return; }
         if (r.g == null || r.gFor !== r.pick) { const a = gramsFor(r.amount, f); r.g = a.g; r.note = a.note; r.gFor = r.pick; }
         const kEl = h('span', { class: 'rk' }, fmt(nutr(f, r.g).k));
-        amt.replaceChildren(gramInput(r.g, (g) => { r.g = g; kEl.textContent = fmt(nutr(f, g).k); }, 'gramy: ' + f.n), h('span', {}, 'g'), kEl);
+        amt.replaceChildren(gramInput(r.g, (g) => { r.g = g; kEl.textContent = fmt(nutr(f, g).k); drawButtons(); }, 'gramy: ' + f.n), h('span', {}, 'g'), kEl);
       };
       sel.onchange = () => { r.pick = sel.value; upd(); drawButtons(); };
       upd();
@@ -376,13 +383,12 @@ function showMatch(segs) {
     }));
     drawButtons();
   };
-  const ok = $('#mok');
   const drawButtons = () => {
     const web = rows.filter((r) => r.pick === 'web').length;
-    const open = rows.filter((r) => r.pick === '').length;
-    ok.disabled = open > 0;
+    ok.disabled = rows.some((r) => r.pick !== 'web' && !r.g);  // an unpicked ("Wybierz…") row has no grams yet
     ok.textContent = web ? `Dodaj i szukaj ${web === rows.length ? '' : 'reszty '}w sieci` : 'Dodaj';
   };
+  const ok = $('#mok');
   draw();
   const dlg = $('#match');
   dlg.returnValue = '';
@@ -392,7 +398,7 @@ function showMatch(segs) {
     for (const r of rows) {
       const f = lib[r.pick];
       if (!f || !r.g) continue;
-      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, cat: f.cat || '', vf: !!f.vf, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
+      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, cat: f.cat || '', vf: f.vf || false, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
       remember({ ...f, key: r.pick, g: r.g }, aliasOf(r.seg));
       added++;
     }
@@ -412,9 +418,9 @@ async function askClaude(text) {
   try {
     const { items, cost } = await analyze({ apiKey, model: currentModel(), text, signal: abort.signal });
     addCost(cost);
-    showPreview(items.map((x) => ({
+    showPreview(text, items.map((x) => ({
       n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0, k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre,
-      sl: x.salt, cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit, url: x.source_url, src: x.source_name, note: x.note,
+      sl: x.salt, cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note,
     })), cost);
   } catch (err) {
     toast(friendlyError(err));
@@ -441,7 +447,7 @@ function setBusy(on) {
   busyTimer = setInterval(() => { i = Math.min(i + 1, steps.length - 1); $('#statustext').textContent = steps[i]; }, 12000);
 }
 
-function showPreview(items, cost) {
+function showPreview(text, items, cost) {
   const dlg = $('#preview');
   const total = h('li', { class: 'sum' });
   const updTotal = () => { total.textContent = `Razem ${fmt(items.reduce((s, it) => s + nutr(it, it.g).k, 0))} kcal`; };
@@ -459,7 +465,9 @@ function showPreview(items, cost) {
     if (dlg.returnValue !== 'ok') return;
     for (const it of items) {
       day.items.push({ ...it, id: Date.now() + Math.random() });
-      if ($('#psave').checked) remember(it);
+      // A single result is the dish the user described: keep their own words as its alias, so
+      // "owsianka z bananem" finds it locally next time.
+      if ($('#psave').checked) remember(it, items.length === 1 ? aliasOf(text) : '');
     }
     saveDay(); render();
     clearDraft();
@@ -480,7 +488,7 @@ $('#manualbtn').onclick = () => {
     const f = lib[sel.value];
     if (!f) return;
     for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
-    $('#mvf').checked = !!f.vf;
+    $('#mvf').checked = vfShare(f.vf) >= 50;
     $('#mcat').value = f.cat || '';
     $('#mg').focus();
   };
@@ -490,7 +498,9 @@ $('#manualbtn').onclick = () => {
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
     const f = lib[sel.value];
-    const it = { n: $('#mn').value.trim(), g: num($('#mg').value), vf: $('#mvf').checked, cat: $('#mcat').value, id: Date.now() };
+    // Keep a dish's fractional vegetable/fruit share when the checkbox was left as it came from the library.
+    const vf = f && $('#mvf').checked === vfShare(f.vf) >= 50 ? f.vf : $('#mvf').checked;
+    const it = { n: $('#mn').value.trim(), g: num($('#mg').value), vf, cat: $('#mcat').value, id: Date.now() };
     for (const c of NUT) it[c] = num($(MF[c]).value);
     if (f && f.n === it.n) Object.assign(it, { url: f.url || '', src: f.src || 'moje produkty' });
     else it.src = 'etykieta';
