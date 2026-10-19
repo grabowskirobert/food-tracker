@@ -842,4 +842,7 @@ drawSync();
 // --- start ------------------------------------------------------------------------
 loadDay();
 render();
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+// The first screen is up: boot.js stands down and its reload guard resets.
+window.__ftReady = true;
+try { sessionStorage.removeItem('ft:heal'); } catch {}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});

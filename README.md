@@ -49,7 +49,12 @@ Scalanie: każdy dzień i produkt ma znacznik czasu `upd`, wygrywa nowsza wersja
 | `llm.js` | zapytanie do Claude z wyszukiwaniem w sieci |
 | `match.js` | lokalne dopasowanie opisu do moich produktów (bez zapytania do AI) |
 | `sync.js` | kopia i synchronizacja z prywatnym repo przez API GitHuba |
+| `boot.js` | gdy skrypty aplikacji nie wystartują, czyści pamięć podręczną i przeładowuje stronę raz |
 | `sw.js`, `manifest.webmanifest`, `icons/` | instalacja na ekranie głównym, działanie offline |
 | `vendor/anthropic-sdk-*.mjs` | SDK zbudowane do jednego pliku (`scripts/build-sdk.sh <wersja>`) |
 
 Lokalnie: `python3 -m http.server` i `http://localhost:8000`.
+
+## Wdrożenia
+
+`sw.js` zapisuje całą aplikację w pamięci podręcznej jednej wersji (`CACHE`) i przy każdym uruchomieniu najpierw pyta sieć z pominięciem pamięci HTTP przeglądarki (GitHub Pages ustawia `max-age=600`, więc pliki pobrane w różnych momentach mogłyby pochodzić z różnych wdrożeń). Gdy sieć zawiedzie, odpowiada ta zapisana wersja. **Po zmianie któregokolwiek pliku z listy `SHELL` w `sw.js` zwiększ numer `CACHE`.**
