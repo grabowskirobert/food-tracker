@@ -1,6 +1,6 @@
 import { FOODS, PLANS, TARGETS, WEEK } from './data.js';
 import { analyze, friendlyError, MODELS } from './llm.js';
-import { matchText, gramsFor, aliasOf } from './match.js';
+import { matchText, gramsFor, aliasOf, suggest } from './match.js';
 import { createSync, mergeMaps, DEFAULT_REPO } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
@@ -515,33 +515,54 @@ const usd = (x) => x.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximum
 const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl' };
 $('#manualbtn').onclick = () => openItemDialog(null);
 
+// Category chips (no native picker: a <select> inside a sheet opened misplaced on iOS).
+const catBox = $('#mcat');
+const setCat = (v) => { for (const b of catBox.children) b.setAttribute('aria-checked', String(b.dataset.v === (v || ''))); };
+const getCat = () => [...catBox.children].find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.v || '';
+catBox.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setCat(b.dataset.v); };
+
 // One sheet for both: adding a product by hand (editing = null) and correcting an item already logged.
-// Values are per 100 g; the amount eaten is separate.
+// Values are per 100 g; the amount eaten is separate. Everything saved here also goes into "moje
+// produkty", so the next description finds it locally.
 function openItemDialog(editing) {
   const lib = library();
-  const sel = $('#mlib');
   const dlg = $('#manual');
+  const sug = $('#msug');
+  let picked = null; // product chosen from the suggestions
   $('#mtitle').textContent = editing ? 'Edytuj pozycję' : 'Dodaj ręcznie';
-  $('#mlibrow').hidden = !!editing;
   $('#mnoterow').hidden = !editing;
   $('#msubmit').textContent = editing ? 'Zapisz' : 'Dodaj';
-  $('#msavet').textContent = editing ? 'Zaktualizuj też w moich produktach' : 'Zapamiętaj w moich produktach';
   $('#mform').reset();
+  setCat('');
+  sug.hidden = true;
 
   const fill = (f) => {
     for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
     $('#mvf').value = vfShare(f.vf) || '';
-    $('#mcat').value = f.cat || '';
+    setCat(f.cat || '');
   };
+  const pick = (s) => {
+    picked = s;
+    fill(s.f);
+    $('#mg').value = s.f.last || s.f.pc || '';
+    sug.hidden = true;
+    $('#mg').focus();
+  };
+
   if (editing) {
     fill(editing);
     $('#mg').value = editing.g || '';
     $('#mnote').value = editing.note || '';
-    $('#msave').checked = !!customFoods()[editing.n.toLowerCase()];
+    $('#mn').oninput = null;
   } else {
-    sel.replaceChildren(h('option', { value: '' }, '— wpisz nowy —'),
-      ...Object.entries(lib).sort((a, b) => a[1].n.localeCompare(b[1].n, 'pl')).map(([k, f]) => h('option', { value: k }, f.n)));
-    sel.onchange = () => { const f = lib[sel.value]; if (f) { fill(f); $('#mg').focus(); } };
+    // Autocomplete: nothing is listed until a fragment matches something in the library.
+    $('#mn').oninput = () => {
+      if (picked && picked.f.n !== $('#mn').value) picked = null;
+      const list = suggest($('#mn').value, lib);
+      sug.replaceChildren(...list.map((x) => h('li', {},
+        h('button', { type: 'button', onclick: () => pick(x) }, h('span', {}, x.f.n), h('small', {}, `${fmt(x.f.k)} kcal`)))));
+      sug.hidden = !list.length;
+    };
   }
 
   dlg.returnValue = '';
@@ -549,23 +570,23 @@ function openItemDialog(editing) {
     if (dlg.returnValue !== 'ok') return;
     const n = $('#mn').value.trim();
     if (!n) return;
-    const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: $('#mcat').value };
+    const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: getCat() };
     // An empty salt field means "unknown" (flagged in the day's salt bar), not zero.
     for (const c of NUT) vals[c] = c === 'sl' && $(MF.sl).value === '' ? undefined : num($(MF[c]).value);
+    let it = editing;
     if (editing) {
       Object.assign(editing, vals, { note: $('#mnote').value.trim() });
-      if ($('#msave').checked) remember({ ...editing });
     } else {
-      const f = lib[sel.value];
-      const it = { ...vals, id: Date.now() };
-      if (f && f.n === it.n) Object.assign(it, { url: f.url || '', src: f.src || 'moje produkty' });
+      it = { ...vals, id: Date.now() };
+      if (picked && picked.f.n === n) Object.assign(it, { url: picked.f.url || '', src: picked.f.src || 'moje produkty' });
       else it.src = 'etykieta';
       day.items.push(it);
-      if ($('#msave').checked) remember(it);
     }
+    remember({ ...it });
     saveDay(); render();
   };
   dlg.showModal();
+  if (!editing) $('#mn').focus();
 }
 
 // --- settings ---------------------------------------------------------------------

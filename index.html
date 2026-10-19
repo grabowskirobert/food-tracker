@@ -80,10 +80,8 @@
 <dialog id="manual" class="sheet">
   <form method="dialog" id="mform">
     <h2 id="mtitle">Dodaj ręcznie</h2>
-    <label id="mlibrow">Z moich produktów
-      <select id="mlib"><option value="">— wpisz nowy —</option></select>
-    </label>
-    <label>Nazwa <input id="mn" required autocomplete="off"></label>
+    <label>Nazwa <input id="mn" required autocomplete="off" autocapitalize="sentences"></label>
+    <ul id="msug" class="sug" hidden></ul>
     <div class="grid">
       <label>Zjedzone, g <input id="mg" type="number" inputmode="decimal" min="0" step="any" required></label>
       <label>kcal / 100 g <input id="mk" type="number" inputmode="decimal" min="0" step="any" required></label>
@@ -93,19 +91,18 @@
       <label>Błonnik / 100 g <input id="mb" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Sól / 100 g <input id="msl" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Warzywa i owoce / 100 g <input id="mvf" type="number" inputmode="decimal" min="0" max="100" step="any" placeholder="0"></label>
-      <label>Kategoria
-        <select id="mcat">
-          <option value="">inne</option>
-          <option value="fish">ryba</option>
-          <option value="legumes">strączkowe</option>
-          <option value="red_meat">czerwone mięso / wędliny</option>
-        </select>
-      </label>
+    </div>
+    <div class="catrow"><span>Kategoria</span>
+      <div class="chips" id="mcat" role="radiogroup" aria-label="Kategoria">
+        <button type="button" role="radio" data-v="">inne</button>
+        <button type="button" role="radio" data-v="fish">ryba</button>
+        <button type="button" role="radio" data-v="legumes">strączkowe</button>
+        <button type="button" role="radio" data-v="red_meat">czerwone mięso</button>
+      </div>
     </div>
     <p class="hint">Gdy znasz tylko sumę dania (np. z menu restauracji), wpisz 100 g i sumy w polach „/ 100 g”.</p>
     <p class="hint">Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania (np. 35).</p>
     <label id="mnoterow">Notatka <textarea id="mnote" rows="3" placeholder="np. składniki i źródło"></textarea></label>
-    <label class="check"><input type="checkbox" id="msave" checked> <span id="msavet">Zapamiętaj w moich produktach</span></label>
     <div class="actions">
       <button value="cancel" formnovalidate>Anuluj</button>
       <button value="ok" class="primary" id="msubmit">Dodaj</button>

@@ -215,3 +215,12 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .ihead .chip { margin-top: 3px; }
 .sheet textarea { font-size: 16px; color: var(--fg); padding: 9px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); resize: vertical; font-family: inherit; }
 .sheet textarea:focus { outline: none; border-color: var(--accent); }
+
+.sug { list-style: none; margin: -6px 0 0; padding: 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.sug li + li { border-top: 1px solid var(--rule); }
+.sug button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px; border: 0; background: var(--bg); text-align: left; font-size: .95rem; }
+.sug small { color: var(--muted); white-space: nowrap; }
+.catrow { display: grid; gap: 6px; font-size: .85rem; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--rule); background: none; border-radius: 999px; padding: 7px 12px; font-size: .85rem; color: var(--muted); }
+.chips button[aria-checked="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }

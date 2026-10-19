@@ -109,3 +109,20 @@ export function gramsFor(amount, f) {
 }
 
 export const aliasOf = (seg) => words(seg).filter((w) => !/^\d/.test(w) && !STOP.has(w)).join(' ');
+
+// Autocomplete for the name field: products where every typed fragment starts a word of the name or an
+// alias (or is a longer form of one, "banana" for "banan"). Products with all fragments in the name first.
+export function suggest(query, lib, limit = 5) {
+  const toks = fold(query).split(/[^a-z0-9]+/).filter(Boolean);
+  if (query.trim().length < 2 || !toks.length) return [];
+  const starts = (ws, t) => ws.some((w) => w.startsWith(t) || (w.length >= 4 && t.startsWith(w)));
+  return Object.entries(lib)
+    .map(([key, f]) => {
+      const inName = words(f.n);
+      if (!toks.every((t) => starts(words([f.n, ...(f.alias || [])].join(' ')), t))) return null;
+      return { key, f, rank: toks.every((t) => starts(inName, t)) ? 0 : 1 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.rank - b.rank || a.f.n.length - b.f.n.length || a.f.n.localeCompare(b.f.n, 'pl'))
+    .slice(0, limit);
+}
