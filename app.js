@@ -1,7 +1,6 @@
 import { FOODS, PLANS, TARGETS, WEEK } from './data.js';
-import { analyze, friendlyError, MODELS } from './llm.js';
-import { matchText, gramsFor, aliasOf, suggest } from './match.js';
-import { createSync, mergeMaps, DEFAULT_REPO } from './sync.js';
+import { analyze, friendlyError, photoForApi, MODELS } from './llm.js';
+import { createSync, DEFAULT_REPO } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
 const NUT = ['k', 'p', 'f', 's', 'b', 'sl'];
@@ -26,49 +25,41 @@ const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDat
 const noon = (d) => { const x = new Date(d); x.setHours(12, 0, 0, 0); return x; };
 const fmt = (x, d = 0) => (Math.round(x * 10 ** d) / 10 ** d).toLocaleString('pl-PL', { minimumFractionDigits: d, maximumFractionDigits: d });
 const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) && n > 0 ? n : 0; };
+const newId = () => Date.now() + Math.random();
 
 let cur = noon(new Date());
 let day;
-const pending = []; // lookups in flight: { id, dayKey, text, step, err, ctl, timer }
+const pending = []; // lookups in flight: { id, dayKey, text, grams, image, step, err, ctl, timer }
 
+// A plan food as a logged item: plan values carry no source page.
+const planItem = (id, g) => {
+  const f = FOODS[id];
+  return { id: newId(), n: f.n, g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, vf: f.vf, cat: f.cat || '', src: 'jadłospis' };
+};
+
+// Every day is a plain list of items. Days saved while the A/B plans were a day mode are converted
+// once, when first shown: the meals that were not skipped become items with the grams that were set.
 function loadDay() {
-  // Days start as "Własny"; A and B stay one tap away as a template.
   day = store.get('day:' + keyOf(cur), null) || { plan: 'free', over: {}, skip: {}, items: [] };
+  const p = PLANS[day.plan];
+  if (!p) return;
+  const fromPlan = [];
+  p.meals.forEach((m, mi) => {
+    if (day.skip?.[`${day.plan}:${mi}`]) return;
+    m.items.forEach(([id, g0], ii) => {
+      const g = day.over?.[`${day.plan}:${mi}:${ii}`] ?? g0;
+      if (g > 0) fromPlan.push(planItem(id, g));
+    });
+  });
+  day.items = [...fromPlan, ...day.items];
+  Object.assign(day, { plan: 'free', over: {}, skip: {} });
+  saveDay();
 }
-// Every record carries `upd` (ms); sync keeps the newest copy of each day and product.
+// Every record carries `upd` (ms); sync keeps the newest copy of each day.
 function saveDay() {
   day.upd = Date.now();
   store.set('day:' + keyOf(cur), day);
   sync.dirtyDay(keyOf(cur));
-}
-
-// Deleted products stay as { del, upd } so the deletion reaches the other device.
-const allFoods = () => store.get('foods', {});
-function customFoods() {
-  return Object.fromEntries(Object.entries(allFoods()).filter(([, f]) => !f.del));
-}
-function saveFoods(foods) { store.set('foods', foods); sync.dirtyFoods(); }
-function library() {
-  const lib = {};
-  for (const f of Object.values(FOODS)) lib[f.n.toLowerCase()] = f;
-  return Object.assign(lib, customFoods());
-}
-// Saves a product (or updates one picked from the library), keeping the last portion and the
-// words the user described it with, so the next description matches it locally.
-function remember(f, alias) {
-  const foods = allFoods();
-  const key = f.key || f.n.toLowerCase();
-  const old = (foods[key] && !foods[key].del ? foods[key] : null) || FOODS[Object.keys(FOODS).find((id) => FOODS[id].n.toLowerCase() === key)] || {};
-  const { n, k, p, f: fat, s, b, sl, vf, cat } = { ...old, ...f };
-  const aliases = new Set(old.alias || []);
-  if (alias && !n.toLowerCase().includes(alias)) aliases.add(alias);
-  foods[key] = {
-    n, k, p, f: fat, s, b, sl, vf, cat: cat || '',
-    url: f.url ?? old.url ?? '', src: f.src ?? old.src ?? '',
-    pc: f.pc || old.pc || 0, last: f.g || old.last || 0, alias: [...aliases].slice(-8), upd: Date.now(),
-  };
-  saveFoods(foods);
-  return { key, created: !old.n };
 }
 
 // --- nutrition -------------------------------------------------------------------
@@ -84,16 +75,13 @@ function nutr(f, g) {
 function addTo(t, v) { for (const c of [...NUT, 'vf', 'nosl']) t[c] += v[c]; }
 const zero = () => ({ k: 0, p: 0, f: 0, s: 0, b: 0, sl: 0, vf: 0, nosl: 0 });
 
-const plan = () => PLANS[day.plan];
-const gramsOf = (mi, ii, g0) => day.over[`${day.plan}:${mi}:${ii}`] ?? g0;
-const skipped = (mi) => !!day.skip[`${day.plan}:${mi}`];
-
-// Everything eaten on a stored day: plan meals that were not skipped, plus added items.
+// Everything eaten on a stored day. Days not yet shown since the plans stopped being a day mode
+// may still hold a plan; their plan meals count until the day is converted.
 function eatenOn(d) {
   const out = [];
   PLANS[d.plan]?.meals.forEach((m, mi) => {
-    if (d.skip[`${d.plan}:${mi}`]) return;
-    m.items.forEach(([id, g0], ii) => out.push([FOODS[id], d.over[`${d.plan}:${mi}:${ii}`] ?? g0]));
+    if (d.skip?.[`${d.plan}:${mi}`]) return;
+    m.items.forEach(([id, g0], ii) => out.push([FOODS[id], d.over?.[`${d.plan}:${mi}:${ii}`] ?? g0]));
   });
   for (const it of d.items) out.push([it, it.g]);
   return out;
@@ -117,10 +105,6 @@ function weekTotals() {
 
 function totals() {
   const t = zero();
-  plan()?.meals.forEach((m, mi) => {
-    if (skipped(mi)) return;
-    m.items.forEach(([id, g0], ii) => addTo(t, nutr(FOODS[id], gramsOf(mi, ii, g0))));
-  });
   day.items.forEach((it) => addTo(t, nutr(it, it.g)));
   return t;
 }
@@ -164,12 +148,8 @@ function gramInput(value, onChange, label) {
 }
 
 // --- rendering -------------------------------------------------------------------
-let rowRefs = [];
-
 function render() {
-  for (const b of $('#seg').children) b.setAttribute('aria-checked', String(b.dataset.plan === day.plan));
   renderDate();
-  renderMeals();
   renderItems();
   drawBody();
   refresh();
@@ -183,38 +163,31 @@ function renderDate() {
   $('#next').disabled = diff <= 0;
 }
 
-function renderMeals() {
-  rowRefs = [];
-  const box = $('#meals');
-  box.replaceChildren();
-  const p = plan();
-  if (!p) return;
-  p.meals.forEach((m, mi) => {
-    const off = skipped(mi);
-    const kEl = h('span', { class: 'mk' });
-    const card = h('article', { class: 'card meal' + (off ? ' off' : '') },
+// Inspiration: the A/B menus as a reference; "Dodaj" logs a whole meal as separate items.
+let inspoPlan = store.get('inspo', 'A');
+function renderInspo() {
+  for (const b of $('#seg').children) b.setAttribute('aria-checked', String(b.dataset.plan === inspoPlan));
+  $('#meals').replaceChildren(...PLANS[inspoPlan].meals.map((m) => {
+    const k = m.items.reduce((s, [id, g]) => s + nutr(FOODS[id], g).k, 0);
+    return h('article', { class: 'meal' },
       h('header', {},
-        h('h3', {}, m.name), kEl,
-        h('button', {
-          type: 'button', class: 'chip', 'aria-pressed': String(off),
-          onclick: () => { const k = `${day.plan}:${mi}`; if (off) delete day.skip[k]; else day.skip[k] = true; saveDay(); render(); },
-        }, off ? 'Przywróć' : 'Pomiń')),
-      h('ul', { class: 'rows' }, m.items.map(([id, g0], ii) => {
-        const f = FOODS[id];
-        const rk = h('span', { class: 'rk' });
-        rowRefs.push({ f, mi, rk, g: () => gramsOf(mi, ii, g0), meal: kEl });
-        return h('li', {},
-          h('span', { class: 'nm' }, f.n),
-          h('label', { class: 'gw' }, gramInput(gramsOf(mi, ii, g0), (g) => {
-            const k = `${day.plan}:${mi}:${ii}`;
-            if (g === g0) delete day.over[k]; else day.over[k] = g;
-            saveDay(); refresh();
-          }, 'gramy: ' + f.n), h('span', {}, 'g')),
-          rk);
-      })));
-    box.append(card);
-  });
+        h('h3', {}, m.name), h('span', { class: 'mk' }, `${fmt(k)} kcal`),
+        h('button', { type: 'button', class: 'chip add', onclick: () => addMeal(m) }, '+ Dodaj')),
+      h('p', { class: 'mlist' }, m.items.map(([id, g]) => `${FOODS[id].n} ${g} g`).join(' · ')));
+  }));
 }
+function addMeal(m) {
+  const added = m.items.map(([id, g]) => planItem(id, g));
+  const dayKey = keyOf(cur);
+  day.items.push(...added);
+  saveDay(); render();
+  toast(`Dodano: ${m.name.toLowerCase()}`, 'Cofnij', () => removeItemsFromDay(dayKey, added.map((it) => it.id)));
+}
+$('#seg').onclick = (e) => {
+  const b = e.target.closest('[data-plan]');
+  if (!b) return;
+  inspoPlan = b.dataset.plan; store.set('inspo', inspoPlan); renderInspo();
+};
 
 const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'źródło'; } };
 
@@ -223,7 +196,7 @@ function itemRow(it, { onGrams, onDelete, onEdit }) {
   const meta = h('small', { class: 'meta' });
   const upd = () => {
     const v = nutr(it, it.g);
-    rk.textContent = fmt(v.k);
+    rk.textContent = `${fmt(v.k)} kcal`;
     meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
       + (CATS[it.cat] ? ` · ${CATS[it.cat]}` : ''));
     // The link shows the site, not the model's long source description (that stays in the tooltip).
@@ -286,16 +259,7 @@ function refresh() {
   $('#week').replaceChildren(h('small', {}, 'Ten tydzień'),
     wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true));
 
-  const mealK = new Map();
-  for (const r of rowRefs) {
-    const k = nutr(r.f, r.g()).k;
-    r.rk.textContent = fmt(k);
-    if (!skipped(r.mi)) mealK.set(r.meal, (mealK.get(r.meal) || 0) + k);
-    else mealK.set(r.meal, mealK.get(r.meal) || 0);
-  }
-  for (const [el, k] of mealK) el.textContent = `${fmt(k)} kcal`;
-  const xk = day.items.reduce((s, it) => s + nutr(it, it.g).k, 0);
-  $('#xk').textContent = day.items.length ? `${fmt(xk)} kcal` : '';
+  $('#xk').textContent = day.items.length ? `${fmt(t.k)} kcal` : '';
 }
 
 function bar(frac, state, mark) {
@@ -325,11 +289,6 @@ function go(deltaDays) {
 $('#prev').onclick = () => go(-1);
 $('#next').onclick = () => go(1);
 $('#today').onclick = () => { cur = noon(new Date()); loadDay(); render(); };
-$('#seg').onclick = (e) => {
-  const b = e.target.closest('[data-plan]');
-  if (!b || b.dataset.plan === day.plan) return;
-  day.plan = b.dataset.plan; saveDay(); render();
-};
 // The home-screen app can stay suspended overnight: jump to the new day when it comes back.
 let lastSeen = keyOf(new Date());
 document.addEventListener('visibilitychange', () => {
@@ -339,110 +298,76 @@ document.addEventListener('visibilitychange', () => {
   lastSeen = now;
 });
 
-// --- composer + LLM ---------------------------------------------------------------
+// --- AI: description or photo ----------------------------------------------------
+// One sheet for both modes: with a photo the description is optional. The weight of the portion is
+// optional in both; without it Claude estimates from the description or the photo.
 const q = $('#q');
-const grow = () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; };
-q.addEventListener('input', () => { grow(); store.set('draft', q.value); });
-q.value = store.get('draft', ''); grow();
-q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
+q.addEventListener('input', () => { if (!shot) store.set('draft', q.value); });
+let shot = null; // { file, url } of the photo in the sheet
 
-$('#composer').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const text = q.value.trim();
-  if (!text) return;
-  // The "Czy chodzi o…" sheet only appears when at least one part is a confident match; a weak
-  // keyword hit (an ingredient of a dish, say) is not worth interrupting for, so Claude gets the text.
-  const segs = matchText(text, library());
-  if (segs.some((x) => x.sure || x.ambiguous)) showMatch(segs);
-  else askClaude(text);
-});
-
-function clearDraft() { q.value = ''; store.del('draft'); grow(); }
-
-// Known products: pick the match and amount locally; only the rest goes to Claude.
-function showMatch(segs) {
-  const lib = library();
-  // Sure: the product is picked. Ambiguous: the user chooses among the strong candidates. Anything else
-  // (a weak keyword hit) goes to Claude.
-  const rows = segs.map((x) => ({ ...x, pick: x.sure ? x.strong[0].key : x.ambiguous ? '' : 'web' }));
-  const ul = $('#mitems');
-  const draw = () => {
-    ul.replaceChildren(...rows.map((r) => {
-      const sel = h('select', { 'aria-label': 'Produkt dla: ' + r.seg },
-        r.pick === '' ? h('option', { value: '' }, 'Wybierz…') : null,
-        r.cands.map((c) => h('option', { value: c.key }, c.f.n)),
-        h('option', { value: 'web' }, 'Inne: szukaj w sieci'));
-      sel.value = r.pick;
-      const amt = h('span', { class: 'gw' });
-      const upd = () => {
-        const f = lib[r.pick];
-        if (!f) { amt.replaceChildren(); r.g = 0; return; }
-        if (r.g == null || r.gFor !== r.pick) { const a = gramsFor(r.amount, f); r.g = a.g; r.note = a.note; r.gFor = r.pick; }
-        const kEl = h('span', { class: 'rk' }, fmt(nutr(f, r.g).k));
-        amt.replaceChildren(gramInput(r.g, (g) => { r.g = g; kEl.textContent = fmt(nutr(f, g).k); drawButtons(); }, 'gramy: ' + f.n), h('span', {}, 'g'), kEl);
-      };
-      sel.onchange = () => { r.pick = sel.value; upd(); drawButtons(); };
-      upd();
-      return h('li', { class: 'mrow' },
-        h('small', { class: 'meta' }, '„' + r.seg + '”'),
-        h('div', { class: 'mline' }, sel, amt),
-        r.note && lib[r.pick] ? h('small', { class: 'note' }, r.note) : null);
-    }));
-    drawButtons();
-  };
-  const drawButtons = () => {
-    const web = rows.filter((r) => r.pick === 'web').length;
-    ok.disabled = rows.some((r) => r.pick !== 'web' && !r.g);  // an unpicked ("Wybierz…") row has no grams yet
-    ok.textContent = web ? `Dodaj i szukaj ${web === rows.length ? '' : 'reszty '}w sieci` : 'Dodaj';
-  };
-  const ok = $('#mok');
-  draw();
-  const dlg = $('#match');
+function openAi(photo) {
+  if (!store.get('apikey', '')) { openSettings('Wpisz klucz API, żeby liczyć wartości przez AI.'); return; }
+  const dlg = $('#ai');
+  if (shot) URL.revokeObjectURL(shot.url);
+  shot = photo ? { file: photo, url: URL.createObjectURL(photo) } : null;
+  $('#aititle').textContent = photo ? 'Co jest na zdjęciu?' : 'Co zjadłeś?';
+  $('#ailabel').textContent = photo ? 'Opis (opcjonalnie)' : 'Opis';
+  q.placeholder = photo ? 'np. kurczak z ryżem, sos śmietanowy' : 'np. 2 jajka sadzone, kromka chleba razowego';
+  q.required = !photo;
+  q.value = photo ? '' : store.get('draft', '');
+  $('#aiimg').hidden = !photo;
+  if (photo) $('#aiimg').src = shot.url;
+  $('#qg').value = '';
+  $('#aihint').textContent = photo
+    ? 'Podaj wagę, jeśli ważyłeś porcję. Bez niej porcja jest szacowana ze zdjęcia.'
+    : 'Kilka rzeczy oddziel przecinkami. Danie z listą składników („owsianka z bananem, skyrem”) liczy się jako jedna pozycja.';
   dlg.returnValue = '';
   dlg.onclose = () => {
-    if (dlg.returnValue !== 'ok') return;
-    let added = 0;
-    for (const r of rows) {
-      const f = lib[r.pick];
-      if (!f || !r.g) continue;
-      day.items.push({ n: f.n, g: r.g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, cat: f.cat || '', vf: f.vf || false, url: f.url || '', src: f.src || 'moje produkty', note: r.note || '', id: Date.now() + Math.random() });
-      remember({ ...f, key: r.pick, g: r.g }, aliasOf(r.seg));
-      added++;
+    const ok = dlg.returnValue === 'ok';
+    const text = q.value.trim(), grams = num($('#qg').value), file = shot?.file;
+    if (ok && (text || file)) {
+      if (!file) store.del('draft');
+      startLookup({ text, grams, file });
     }
-    if (added) { saveDay(); render(); }
-    const rest = rows.filter((r) => r.pick === 'web').map((r) => r.seg);
-    if (rest.length) askClaude(rest.join(', '));
-    else { clearDraft(); toast(`Dodano ${added} z moich produktów, bez zapytania do API.`); }
+    if (shot) { URL.revokeObjectURL(shot.url); shot = null; }
   };
   dlg.showModal();
+  if (!photo) q.focus();
 }
+$('#aibtn').onclick = () => openAi(null);
+$('#photobtn').onclick = () => $('#photofile').click();
+$('#photofile').onchange = (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) openAi(file);
+};
+q.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && q.value.trim()) { e.preventDefault(); $('#ai').close('ok'); }
+});
 
-// --- lookups ----------------------------------------------------------------------
-// A description that needs Claude appears at once as a row in "Dodatkowe" with a spinner, and the
-// result replaces it in place. Several lookups can run side by side, and a result always lands on
-// the day it was typed for, even if another day is on screen by then.
-const STEPS = ['Szukam wartości w sieci…', 'Sprawdzam źródła…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
+// A lookup appears at once as a row with a spinner and the result replaces it in place. Several can
+// run side by side, and a result always lands on the day it was started for.
+const STEPS = ['Liczę wartości…', 'Sprawdzam źródło…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
 const plPos = (n) => (n === 1 ? '1 pozycję' : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? `${n} pozycje` : `${n} pozycji`);
+const lookupLabel = (p) => [p.file ? 'Zdjęcie' : '', p.text, p.grams ? `${fmt(p.grams)} g` : ''].filter(Boolean).join(' · ');
 
 function pendingRow(p) {
   const st = h('span', {}, p.err || STEPS[p.step]);
   p.stEl = st;
   return h('li', { class: 'item pend' + (p.err ? ' err' : ''), 'aria-busy': String(!p.err) },
     h('div', { class: 'ihead' },
-      h('span', { class: 'iname' }, p.text),
+      h('span', { class: 'iname' }, lookupLabel(p)),
       p.err ? h('button', { type: 'button', class: 'chip', onclick: () => { runLookup(p); renderItems(); } }, 'Ponów') : null,
       h('button', {
-        type: 'button', class: 'icon del', 'aria-label': p.err ? 'Usuń' : 'Przerwij szukanie',
+        type: 'button', class: 'icon del', 'aria-label': p.err ? 'Usuń' : 'Przerwij',
         onclick: () => { if (p.err) { pending.splice(pending.indexOf(p), 1); renderItems(); } else p.ctl.abort(); },
       }, '×')),
     h('small', { class: 'meta' }, p.err ? null : h('i', { class: 'spin' }), st));
 }
 
-function askClaude(text) {
-  if (!store.get('apikey', '')) { openSettings('Wpisz klucz API, żeby liczyć wartości z opisu.'); return; }
-  const p = { id: Date.now() + Math.random(), dayKey: keyOf(cur), text, step: 0, err: '' };
+function startLookup({ text, grams, file }) {
+  const p = { id: newId(), dayKey: keyOf(cur), text, grams, file, step: 0, err: '' };
   pending.push(p);
-  clearDraft();
   runLookup(p);
   renderItems();
   $('#items').lastElementChild?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -455,16 +380,19 @@ async function runLookup(p) {
   p.timer = setInterval(() => {
     p.step = Math.min(p.step + 1, STEPS.length - 1);
     if (p.stEl && !p.err) p.stEl.textContent = STEPS[p.step];
-  }, 12000);
+  }, 8000);
+  const model = currentModel();
   try {
-    const { items, cost } = await analyze({ apiKey: store.get('apikey', ''), model: currentModel(), text: p.text, signal: p.ctl.signal });
-    addCost(cost);
-    finishLookup(p, items, cost);
+    p.image ??= p.file ? await photoForApi(p.file) : null;
+    const res = await analyze({ apiKey: store.get('apikey', ''), model, text: p.text, grams: p.grams, image: p.image, signal: p.ctl.signal });
+    logCost(model, lookupLabel(p), res);
+    finishLookup(p, res.items);
   } catch (err) {
     clearInterval(p.timer);
+    if (err.usage) logCost(model, lookupLabel(p), err);
     if (p.ctl.signal.aborted) {
       pending.splice(pending.indexOf(p), 1);
-      if (!q.value) { q.value = p.text; store.set('draft', p.text); grow(); } // give the text back for editing
+      if (!p.file && !store.get('draft', '')) store.set('draft', p.text); // the text waits in the sheet for editing
     } else {
       p.err = friendlyError(err);
     }
@@ -472,25 +400,17 @@ async function runLookup(p) {
   }
 }
 
-function finishLookup(p, items, cost) {
+function finishLookup(p, items) {
   clearInterval(p.timer);
   pending.splice(pending.indexOf(p), 1);
   const added = items.map((x) => ({
-    id: Date.now() + Math.random(), n: x.name, g: Math.round(x.grams), pc: Math.round(x.piece_grams) || 0,
+    id: newId(), n: x.name, g: Math.round(x.grams),
     k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
     cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note,
   }));
-  // Results are kept as products. A single result is the dish the user described: their own words
-  // become its alias, so "owsianka z bananem" finds it locally next time.
-  const created = added.map((it) => remember(it, added.length === 1 ? aliasOf(p.text) : '')).filter((r) => r.created).map((r) => r.key);
   addItemsToDay(p.dayKey, added);
   if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => {
-    removeItemsFromDay(p.dayKey, added.map((it) => it.id));
-    const foods = allFoods();
-    for (const key of created) foods[key] = { del: true, upd: Date.now() };
-    saveFoods(foods);
-  });
+  toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => removeItemsFromDay(p.dayKey, added.map((it) => it.id)));
 }
 
 function addItemsToDay(dayKey, items) {
@@ -507,9 +427,24 @@ function removeItemsFromDay(dayKey, ids) {
   store.set('day:' + dayKey, d); sync.dirtyDay(dayKey);
 }
 
+// --- cost log -----------------------------------------------------------------------
+// The month total plus the last 50 requests with their token counts, so it shows what costs most.
 const monthKey = () => 'cost:' + keyOf(new Date()).slice(0, 7);
-function addCost(usd) { store.set(monthKey(), store.get(monthKey(), 0) + usd); }
 const usd = (x) => x.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' $';
+function logCost(model, what, { cost, usage }) {
+  store.set(monthKey(), store.get(monthKey(), 0) + cost);
+  store.set('costlog', [{ t: Date.now(), model, what: what.slice(0, 80), cost, ...usage }, ...store.get('costlog', [])].slice(0, 50));
+}
+const shortModel = (id) => (MODELS.find(([m]) => m === id)?.[1] || id).replace(/^Claude /, '').replace(/ \(.*\)$/, '');
+const kTok = (n) => (n >= 1000 ? `${fmt(n / 1000, n < 10000 ? 1 : 0)}k` : String(n));
+function renderCostLog() {
+  const log = store.get('costlog', []);
+  $('#scost').textContent = `Wydane w tym miesiącu: ${usd(store.get(monthKey(), 0))}`;
+  $('#slog').replaceChildren(...(log.length ? log.map((x) => h('li', {},
+    h('span', { class: 'nm' }, x.what,
+      h('small', { class: 'meta' }, `${when(x.t)} · ${shortModel(x.model)} · wej. ${kTok(x.in)} · wyj. ${kTok(x.out)} · wysz. ${x.searches}`)),
+    h('span', { class: 'rk' }, usd(x.cost)))) : [h('li', { class: 'empty' }, 'Brak zapytań.')]));
+}
 
 // --- add by hand / edit an item ----------------------------------------------------
 const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl' };
@@ -521,49 +456,44 @@ const setCat = (v) => { for (const b of catBox.children) b.setAttribute('aria-ch
 const getCat = () => [...catBox.children].find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.v || '';
 catBox.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setCat(b.dataset.v); };
 
-// One sheet for both: adding a product by hand (editing = null) and correcting an item already logged.
-// Values are per 100 g; the amount eaten is separate. Everything saved here also goes into "moje
-// produkty", so the next description finds it locally.
+// Things eaten in the last two weeks, newest first, one per name: a tap fills the form to log it again.
+function recentItems(limit = 8) {
+  const seen = new Map();
+  for (let o = 0; o < 14 && seen.size < limit; o++) {
+    const d = new Date(); d.setDate(d.getDate() - o);
+    const dd = keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null);
+    for (const it of [...(dd?.items || [])].reverse()) {
+      const k = it.n.toLowerCase();
+      if (!seen.has(k) && seen.size < limit) seen.set(k, it);
+    }
+  }
+  return [...seen.values()];
+}
+
+// One sheet for both: adding by hand (editing = null) and correcting an item already logged.
+// Values are per 100 g; the amount eaten is separate.
 function openItemDialog(editing) {
-  const lib = library();
   const dlg = $('#manual');
-  const sug = $('#msug');
-  let picked = null; // product chosen from the suggestions
+  let from = null; // a recent item the form was filled from: keeps its source and note
   $('#mtitle').textContent = editing ? 'Edytuj pozycję' : 'Dodaj ręcznie';
   $('#mnoterow').hidden = !editing;
   $('#msubmit').textContent = editing ? 'Zapisz' : 'Dodaj';
   $('#mform').reset();
   setCat('');
-  sug.hidden = true;
 
   const fill = (f) => {
     for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
+    $('#mg').value = f.g || '';
     $('#mvf').value = vfShare(f.vf) || '';
     setCat(f.cat || '');
   };
-  const pick = (s) => {
-    picked = s;
-    fill(s.f);
-    $('#mg').value = s.f.last || s.f.pc || '';
-    sug.hidden = true;
-    $('#mg').focus();
-  };
+  const recent = editing ? [] : recentItems();
+  $('#mrecent').hidden = !recent.length;
+  $('#mrecentlist').replaceChildren(...recent.map((it) => h('button', {
+    type: 'button', onclick: () => { from = it; fill(it); $('#mg').focus(); },
+  }, it.n.length > 28 ? it.n.slice(0, 27) + '…' : it.n)));
 
-  if (editing) {
-    fill(editing);
-    $('#mg').value = editing.g || '';
-    $('#mnote').value = editing.note || '';
-    $('#mn').oninput = null;
-  } else {
-    // Autocomplete: nothing is listed until a fragment matches something in the library.
-    $('#mn').oninput = () => {
-      if (picked && picked.f.n !== $('#mn').value) picked = null;
-      const list = suggest($('#mn').value, lib);
-      sug.replaceChildren(...list.map((x) => h('li', {},
-        h('button', { type: 'button', onclick: () => pick(x) }, h('span', {}, x.f.n), h('small', {}, `${fmt(x.f.k)} kcal`)))));
-      sug.hidden = !list.length;
-    };
-  }
+  if (editing) { fill(editing); $('#mnote').value = editing.note || ''; }
 
   dlg.returnValue = '';
   dlg.onclose = () => {
@@ -573,26 +503,21 @@ function openItemDialog(editing) {
     const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: getCat() };
     // An empty salt field means "unknown" (flagged in the day's salt bar), not zero.
     for (const c of NUT) vals[c] = c === 'sl' && $(MF.sl).value === '' ? undefined : num($(MF[c]).value);
-    let it = editing;
     if (editing) {
       Object.assign(editing, vals, { note: $('#mnote').value.trim() });
     } else {
-      it = { ...vals, id: Date.now() };
-      if (picked && picked.f.n === n) Object.assign(it, { url: picked.f.url || '', src: picked.f.src || 'moje produkty' });
-      else it.src = 'etykieta';
-      day.items.push(it);
+      const same = from && from.n === n;
+      day.items.push({ ...vals, id: newId(), src: same ? from.src || '' : 'etykieta', url: same ? from.url || '' : '', note: same ? from.note || '' : '' });
     }
-    remember({ ...it });
     saveDay(); render();
   };
   dlg.showModal();
-  if (!editing) $('#mn').focus();
+  if (!editing && !recent.length) $('#mn').focus();
 }
 
 // --- settings ---------------------------------------------------------------------
-// Stored under a new key so earlier saved choices fall back to the new default (Sonnet).
 const currentModel = () => store.get('llm', MODELS[0][0]);
-$('#smodel').replaceChildren(...MODELS.map(([id, label]) => h('option', { value: id }, label)));
+$('#smodel').replaceChildren(...MODELS.map(([id, name]) => h('option', { value: id }, name)));
 $('#gear').onclick = () => openSettings();
 
 function openSettings(note) {
@@ -605,9 +530,7 @@ function openSettings(note) {
   $('#ghrepo').value = store.get('ghrepo', '');
   $('#ghrepo').placeholder = DEFAULT_REPO;
   drawSync();
-  $('#scost').textContent = `Wydane w tym miesiącu (szacunek z tej aplikacji): ${usd(store.get(monthKey(), 0))}`;
-  renderLib();
-  drawFill();
+  renderCostLog();
   dlg.returnValue = '';
   dlg.onclose = () => {
     if (dlg.returnValue !== 'ok') return;
@@ -621,66 +544,9 @@ function openSettings(note) {
   if (note) $('#skey').focus();
 }
 
-// Products saved before salt and categories were tracked: fill them in with one Claude call,
-// then patch the copies already logged on past days.
-function missingSalt() { return Object.entries(customFoods()).filter(([, f]) => f.sl == null); }
-function drawFill() {
-  const n = missingSalt().length;
-  $('#sfill').hidden = !n;
-  $('#sfill').textContent = `Uzupełnij sól i kategorie z sieci (${n} ${n === 1 ? 'produkt' : 'produkty'})`;
-}
-$('#sfill').onclick = async () => {
-  const apiKey = store.get('apikey', '');
-  if (!apiKey) { toast('Najpierw wpisz klucz API.'); return; }
-  const list = missingSalt();
-  const btn = $('#sfill'), msg = $('#sfillmsg');
-  btn.disabled = true; btn.textContent = 'Uzupełniam z sieci…'; msg.hidden = true;
-  try {
-    const text = 'Fill in the values for these products. Return exactly one item per line, in this order, '
-      + 'keeping each name exactly as written, grams 100:\n' + list.map(([, f]) => '- ' + f.n).join('\n');
-    const { items, cost } = await analyze({ apiKey, model: currentModel(), text });
-    addCost(cost);
-    const foods = allFoods();
-    const fixed = {};
-    list.forEach(([key, f], i) => {
-      const x = items.find((it) => it.name.toLowerCase() === f.n.toLowerCase()) || items[i];
-      if (!x) return;
-      foods[key] = { ...foods[key], sl: x.salt, cat: x.category === 'none' ? '' : x.category, upd: Date.now() };
-      fixed[f.n.toLowerCase()] = foods[key];
-    });
-    saveFoods(foods);
-    for (const k of store.keys('day:')) {
-      const d = store.get(k, null);
-      let changed = false;
-      for (const it of d?.items || []) {
-        const f = fixed[it.n.toLowerCase()];
-        if (f && it.sl == null) { it.sl = f.sl; it.cat = f.cat; changed = true; }
-      }
-      if (changed) { d.upd = Date.now(); store.set(k, d); sync.dirtyDay(k.slice(4)); }
-    }
-    loadDay(); render();
-    msg.textContent = `Uzupełnione produkty: ${Object.keys(fixed).length} · ≈ ${usd(cost)}`; msg.hidden = false;
-  } catch (err) {
-    msg.textContent = friendlyError(err); msg.hidden = false;
-  } finally {
-    btn.disabled = false;
-    drawFill();
-  }
-};
-
-function renderLib() {
-  const foods = customFoods();
-  const keys = Object.keys(foods).sort((a, b) => a.localeCompare(b, 'pl'));
-  $('#slib').replaceChildren(...(keys.length ? keys.map((k) => h('li', {},
-    h('span', { class: 'nm' }, foods[k].n, h('small', { class: 'meta' }, `${fmt(foods[k].k)} kcal / 100 g`)),
-    h('button', { type: 'button', class: 'icon del', 'aria-label': 'Usuń: ' + foods[k].n, onclick: () => {
-      const all = allFoods(); all[k] = { del: true, upd: Date.now() }; saveFoods(all); renderLib();
-    } }, '×'))) : [h('li', { class: 'empty' }, 'Jeszcze nic. Produkty dodane z opisu lub ręcznie pojawią się tutaj.')]));
-}
-
 $('#sexport').onclick = async () => {
   const data = {};
-  for (const k of [...store.keys('day:'), 'foods']) {
+  for (const k of store.keys('day:')) {
     const raw = localStorage.getItem('ft:' + k);
     if (raw != null) data['ft:' + k] = raw;
   }
@@ -700,26 +566,21 @@ $('#sfile').onchange = async (e) => {
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
-    const keys = Object.keys(data).filter((k) => k === 'ft:foods' || k.startsWith('ft:day:'));
+    const keys = Object.keys(data).filter((k) => k.startsWith('ft:day:'));
     if (!keys.length) throw new Error();
-    // Merge by `upd`, so an older export never overwrites newer entries.
+    // Newest `upd` wins, so an older export never overwrites newer entries.
     let taken = 0;
     for (const k of keys) {
       const rec = JSON.parse(data[k]);
-      if (k === 'ft:foods') {
-        const { merged, toLocal } = mergeMaps(allFoods(), rec);
-        if (toLocal.length) { saveFoods(merged); taken += toLocal.length; }
-      } else if ((rec.upd || 0) > (store.get(k.slice(3), null)?.upd || 0) || store.get(k.slice(3), null) == null) {
-        store.set(k.slice(3), rec); sync.dirtyDay(k.slice(7)); taken++;
-      }
+      const local = store.get(k.slice(3), null);
+      if (local == null || (rec.upd || 0) > (local.upd || 0)) { store.set(k.slice(3), rec); sync.dirtyDay(k.slice(7)); taken++; }
     }
-    loadDay(); render(); renderLib();
-    toast(taken ? `Zaimportowano wpisów: ${taken}.` : 'Nic do zaimportowania: masz już nowsze dane.');
+    loadDay(); render();
+    toast(taken ? `Zaimportowano dni: ${taken}.` : 'Nic do zaimportowania: masz już nowsze dane.');
   } catch {
     toast('To nie jest plik eksportu z tej aplikacji.');
   }
 };
-
 
 // --- weight and waist ---------------------------------------------------------------
 const dayAt = (d) => (keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null));
@@ -842,6 +703,7 @@ drawSync();
 // --- start ------------------------------------------------------------------------
 loadDay();
 render();
+renderInspo();
 // The first screen is up: boot.js stands down and its reload guard resets.
 window.__ftReady = true;
 try { sessionStorage.removeItem('ft:heal'); } catch {}
