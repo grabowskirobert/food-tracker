@@ -485,7 +485,7 @@ function finishLookup(p, items, cost) {
   const created = added.map((it) => remember(it, added.length === 1 ? aliasOf(p.text) : '')).filter((r) => r.created).map((r) => r.key);
   addItemsToDay(p.dayKey, added);
   if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  toast(`Dodano ${plPos(added.length)} · ≈ ${usd(cost)}`, 'Cofnij', () => {
+  toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => {
     removeItemsFromDay(p.dayKey, added.map((it) => it.id));
     const foods = allFoods();
     for (const key of created) foods[key] = { del: true, upd: Date.now() };
