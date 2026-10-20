@@ -256,7 +256,7 @@ function refresh() {
 
   const w = weekTotals();
   const wk = (label, v, goal, max) => h('span', { class: max ? (v > goal ? 'bad' : 'ok') : (v >= goal ? 'ok' : '') },
-    label, ' ', h('b', {}, fmt(v)), max ? ` / max ${goal} g` : `/${goal}`);
+    label, ' ', h('b', {}, fmt(v)), max ? ` / ${goal} g` : `/${goal}`);
   $('#week').replaceChildren(h('small', {}, 'Ten tydzień'),
     wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true));
 
