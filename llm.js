@@ -93,18 +93,20 @@ export function friendlyError(err) {
 }
 
 // Haiku has no dynamic-filtering search and no server-side refusal fallback.
-function requestFor(model) {
+// Default effort: medium on Haiku, low on Sonnet and Opus; the comparison page overrides it.
+export const defaultEffort = (model) => (isHaiku(model) ? 'medium' : 'low');
+function requestFor(model, effort = defaultEffort(model)) {
   const where = { type: 'approximate', country: 'PL', timezone: 'Europe/Warsaw' };
   if (isHaiku(model)) {
     return {
-      output_config: { effort: 'medium' },
+      output_config: { effort },
       tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2, user_location: where }, SAVE_TOOL],
     };
   }
   return {
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
-    output_config: { effort: 'low' },
+    output_config: { effort },
     tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 2, user_location: where }, SAVE_TOOL],
   };
 }
@@ -112,7 +114,7 @@ function requestFor(model) {
 // text: what was eaten (may be empty with a photo). grams: weight of the whole portion, or 0.
 // image: { data: base64, media_type } or null.
 // Returns { items, cost, usage } where cost is the estimated USD price and usage the token counts.
-export async function analyze({ apiKey, model, text = '', grams = 0, image = null, signal }) {
+export async function analyze({ apiKey, model, effort, text = '', grams = 0, image = null, signal }) {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   let prompt = `What I ate:\n${text.trim() || (image ? '(see the photo)' : '')}`;
   if (grams > 0) prompt += `\n\nWeight of the whole portion: ${grams} g.`;
@@ -130,7 +132,7 @@ export async function analyze({ apiKey, model, text = '', grams = 0, image = nul
       system: SYSTEM,
       tool_choice: { type: 'auto' },
       messages,
-      ...requestFor(model),
+      ...requestFor(model, effort),
     }, { signal });
     const u = msg.usage || {};
     usage.in += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
