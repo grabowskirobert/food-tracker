@@ -93,8 +93,9 @@ export function friendlyError(err) {
 }
 
 // Haiku has no dynamic-filtering search and no server-side refusal fallback.
-// Default effort: medium on Haiku, low on Sonnet and Opus; the comparison page overrides it.
-export const defaultEffort = (model) => (isHaiku(model) ? 'medium' : 'low');
+// Default effort: high on Haiku (as cheap as medium there, steadier portions), low on Sonnet and Opus;
+// the comparison page overrides it.
+export const defaultEffort = (model) => (isHaiku(model) ? 'high' : 'low');
 function requestFor(model, effort = defaultEffort(model)) {
   const where = { type: 'approximate', country: 'PL', timezone: 'Europe/Warsaw' };
   if (isHaiku(model)) {

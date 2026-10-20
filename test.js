@@ -24,11 +24,11 @@ const CASES = [
 $('#cases').value = get('testcases', CASES.join('\n'));
 // Model and effort pairs; the first of each model is what the app uses.
 const CONFIGS = [
-  ['claude-haiku-5-5', 'medium'], ['claude-haiku-5-5', 'high'],
+  ['claude-haiku-5-5', 'high'], ['claude-haiku-5-5', 'medium'],
   ['claude-sonnet-5-5', 'low'], ['claude-sonnet-5-5', 'medium'],
   ['claude-opus-5-5', 'low'],
 ].map(([model, effort]) => ({ id: `${model}:${effort}`, model, effort, name: `${model.replace(/^claude-/, '').replace(/-(\d)-(\d)$/, ' $1.$2')} · ${effort}` }));
-const picked = new Set(get('testcfg', ['claude-haiku-5-5:medium', 'claude-haiku-5-5:high']));
+const picked = new Set(get('testcfg', ['claude-haiku-5-5:high', 'claude-sonnet-5-5:low']));
 $('#models').replaceChildren(...CONFIGS.map(({ id, name }) => {
   const b = h('button', { type: 'button', role: 'checkbox', 'aria-checked': String(picked.has(id)) }, name);
   b.onclick = () => { picked.has(id) ? picked.delete(id) : picked.add(id); b.setAttribute('aria-checked', String(picked.has(id))); };
