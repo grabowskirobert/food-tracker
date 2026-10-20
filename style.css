@@ -260,3 +260,35 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .test th { color: var(--muted); font-weight: 500; border-top: 0; }
 .test tr.first td { border-top-color: var(--fg); }
 .test td.err { color: var(--bad); white-space: normal; }
+
+/* sheet header with a close button, sticky while the sheet scrolls */
+.sheet { overflow-y: auto; overscroll-behavior: contain; }
+.sheet form:has(> .shead) { padding-top: 0; }
+.shead {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+  margin: 0 -16px; padding: 14px 12px 8px 16px; background: var(--card);
+}
+.shead h2 { margin: 0; }
+.close { width: 40px; height: 40px; font-size: 1.6rem; color: var(--muted); background: var(--track); }
+.close:focus:not(:focus-visible) { outline: none; }
+
+/* settings fields: saved value with "Zmień", the input only while editing */
+.field { display: grid; gap: 6px; }
+.flabel { font-size: .85rem; color: var(--muted); }
+.fview { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg); color: var(--muted); min-height: 44px; }
+.fview code, .fview span { font: inherit; font-size: .9rem; overflow-wrap: anywhere; }
+.fview .chip { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); padding: 5px 12px; flex-shrink: 0; }
+.fedit { display: grid; gap: 8px; }
+.fedit input { font-size: 16px; color: var(--fg); padding: 9px 10px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); }
+.fedit input:focus { outline: none; border-color: var(--accent); }
+.chip.wide { align-self: flex-start; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); padding: 8px 14px; font-size: .9rem; }
+
+/* model comparison sheet */
+.cmp { display: grid; gap: 14px; }
+.cmp h3 { font-size: .9rem; margin: 0 0 4px; }
+.cmp .scroll { overflow-x: auto; }
+.cmp table { border-collapse: collapse; width: 100%; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.cmp th, .cmp td { text-align: right; padding: 5px 0 5px 8px; border-top: 1px solid var(--rule); white-space: nowrap; }
+.cmp th { color: var(--muted); font-weight: 500; border-top: 0; }
+.cmp td.n { text-align: left; white-space: normal; padding-left: 0; min-width: 7rem; }
+#cstat { display: flex; align-items: center; gap: 6px; }

@@ -29,6 +29,7 @@ const newId = () => Date.now() + Math.random();
 
 let cur = noon(new Date());
 let day;
+const photos = new Map(); // lookup id → photo sent, kept for this session only (too big for storage)
 const pending = []; // lookups in flight: { id, dayKey, text, grams, image, step, err, ctl, timer }
 
 // A plan food as a logged item: plan values carry no source page.
@@ -386,7 +387,8 @@ async function runLookup(p) {
     p.image ??= p.file ? await photoForApi(p.file) : null;
     const res = await analyze({ apiKey: store.get('apikey', ''), model, text: p.text, grams: p.grams, image: p.image, signal: p.ctl.signal });
     logCost(model, lookupLabel(p), res);
-    finishLookup(p, res.items);
+    if (p.image) photos.set(p.id, p.image);
+    finishLookup(p, res.items, model);
   } catch (err) {
     clearInterval(p.timer);
     if (err.usage) logCost(model, lookupLabel(p), err);
@@ -400,18 +402,20 @@ async function runLookup(p) {
   }
 }
 
-function finishLookup(p, items) {
+function finishLookup(p, items, model) {
   clearInterval(p.timer);
   pending.splice(pending.indexOf(p), 1);
-  const added = items.map((x) => ({
-    id: newId(), n: x.name, g: Math.round(x.grams),
-    k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
-    cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note,
-  }));
+  const added = toItems(items, { lid: p.id, q: { text: p.text, grams: p.grams, photo: !!p.file }, m: model });
   addItemsToDay(p.dayKey, added);
   if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => removeItemsFromDay(p.dayKey, added.map((it) => it.id)));
 }
+// lid ties the items of one lookup together; q is what was asked, m the model that answered.
+const toItems = (items, extra) => items.map((x) => ({
+    id: newId(), n: x.name, g: Math.round(x.grams),
+    k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
+    cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
+}));
 
 function addItemsToDay(dayKey, items) {
   if (dayKey === keyOf(cur)) { day.items.push(...items); saveDay(); render(); return; }
@@ -494,6 +498,9 @@ function openItemDialog(editing) {
   }, it.n.length > 28 ? it.n.slice(0, 27) + '…' : it.n)));
 
   if (editing) { fill(editing); $('#mnote').value = editing.note || ''; }
+  const canCompare = !!editing?.q && (!editing.q.photo || photos.has(editing.lid));
+  $('#mcompare').hidden = !canCompare;
+  $('#mcompare').onclick = () => { dlg.close('cancel'); openCompare(editing); };
 
   dlg.returnValue = '';
   dlg.onclose = () => {
@@ -515,31 +522,113 @@ function openItemDialog(editing) {
   if (!editing && !recent.length) $('#mn').focus();
 }
 
+// --- compare an AI result with another model -----------------------------------------
+// Sends the same description (or this session's photo) to another model and shows both answers side by side;
+// "Użyj nowych wartości" swaps the items of that lookup for the new ones.
+function openCompare(it) {
+  const dlg = $('#compare');
+  const dayKey = keyOf(cur);
+  const group = () => day.items.filter((x) => x.lid === it.lid);
+  const others = MODELS.filter(([id]) => id !== it.m);
+  let pick = others.find(([id]) => id === 'claude-sonnet-5-5')?.[0] || others[0][0];
+  let fresh = null, ctl = null;
+  $('#cqtext').textContent = `„${[it.q.photo ? 'Zdjęcie' : '', it.q.text, it.q.grams ? `${fmt(it.q.grams)} g` : ''].filter(Boolean).join(' · ')}” · teraz: ${shortModel(it.m || '')}`;
+  const chips = () => $('#cmodels').replaceChildren(...others.map(([id]) => h('button', {
+    type: 'button', role: 'radio', 'aria-checked': String(id === pick), onclick: () => { pick = id; chips(); },
+  }, shortModel(id))));
+  chips();
+  const table = (title, items, cost) => h('section', {},
+    h('h3', {}, title, cost != null ? h('small', {}, ` · ${usd(cost)}`) : null),
+    h('div', { class: 'scroll' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['', 'g', 'kcal', 'B', 'T', 'nas.', 'bł.', 'sól'].map((x) => h('th', {}, x)))),
+      h('tbody', {}, items.map((x) => h('tr', {}, h('td', { class: 'n' }, x.n), h('td', {}, fmt(x.g)),
+        ...['k', 'p', 'f', 's', 'b', 'sl'].map((c) => h('td', {}, x[c] == null ? '?' : fmt(x[c] * x.g / 100, c === 'k' ? 0 : 1)))))))));
+  $('#cout').replaceChildren(table(shortModel(it.m || '') || 'Teraz', group()));
+  $('#cstat').textContent = 'Wartości dla zjedzonej porcji.';
+  $('#crun').hidden = false; $('#crun').disabled = false; $('#cuse').hidden = true;
+  $('#crun').onclick = async () => {
+    $('#crun').disabled = true;
+    $('#cstat').replaceChildren(h('i', { class: 'spin' }), ` Pytam ${shortModel(pick)}…`);
+    ctl = new AbortController();
+    const model = pick;
+    try {
+      const res = await analyze({ apiKey: store.get('apikey', ''), model, text: it.q.text, grams: it.q.grams, image: it.q.photo ? photos.get(it.lid) : null, signal: ctl.signal });
+      logCost(model, `Porównanie: ${it.q.text || 'zdjęcie'}`, res);
+      fresh = toItems(res.items, { lid: it.lid, q: it.q, m: model });
+      $('#cout').append(table(shortModel(model), fresh, res.cost));
+      $('#cstat').textContent = 'Wartości dla zjedzonej porcji.';
+      $('#crun').hidden = true; $('#cuse').hidden = false;
+    } catch (err) {
+      if (err.usage) logCost(model, `Porównanie: ${it.q.text || 'zdjęcie'}`, err);
+      $('#cstat').textContent = ctl.signal.aborted ? '' : friendlyError(err);
+      $('#crun').disabled = false;
+    }
+  };
+  $('#cuse').onclick = () => {
+    if (keyOf(cur) !== dayKey || !fresh) { dlg.close(); return; }
+    const old = group();
+    const at = day.items.indexOf(old[0]);
+    day.items = day.items.filter((x) => x.lid !== it.lid);
+    day.items.splice(at < 0 ? day.items.length : at, 0, ...fresh);
+    saveDay(); render();
+    dlg.close();
+    toast(`Zastąpiono wartościami z ${shortModel(fresh[0]?.m || '')}`, 'Cofnij', () => {
+      day.items = day.items.filter((x) => x.lid !== it.lid);
+      day.items.splice(at < 0 ? day.items.length : at, 0, ...old);
+      saveDay(); render();
+    });
+  };
+  dlg.onclose = () => ctl?.abort();
+  dlg.showModal();
+}
+
 // --- settings ---------------------------------------------------------------------
 const currentModel = () => store.get('llm', MODELS[0][0]);
 $('#smodel').replaceChildren(...MODELS.map(([id, name]) => h('option', { value: id }, name)));
 $('#gear').onclick = () => openSettings();
 
+// Saved values show masked with "Zmień"; nothing opens the keyboard until the user asks to edit.
+// Every change saves at once, so the sheet closes with ×, a tap outside or Escape.
+const mask = (v) => (v.length > 12 ? `${v.slice(0, 7)}…${v.slice(-4)}` : '••••');
+function editRow(view, form, open) { $(view).hidden = open; $(form).hidden = !open; }
+function drawKey(edit = false) {
+  const key = store.get('apikey', '');
+  $('#keyshow').textContent = key ? mask(key) : 'brak';
+  editRow('#keyview', '#keyform', edit || !key);
+  $('#keycancel').hidden = !key;
+  $('#skey').value = '';
+}
+function drawGh(edit = false) {
+  const token = store.get('ghtoken', ''), repo = store.get('ghrepo', '') || DEFAULT_REPO;
+  $('#ghshow').textContent = token ? `${repo} · token ${mask(token)}` : 'wyłączona';
+  editRow('#ghview', '#ghform', edit);
+  $('#ghtoken').value = '';
+  $('#ghtoken').placeholder = token ? `Token: ${mask(token)} (puste = bez zmian)` : 'Token: github_pat_…';
+  $('#ghrepo').value = store.get('ghrepo', '');
+  $('#ghrepo').placeholder = DEFAULT_REPO;
+}
+$('#keyedit').onclick = () => { drawKey(true); $('#skey').focus(); };
+$('#keycancel').onclick = () => drawKey();
+$('#keysave').onclick = () => {
+  const key = $('#skey').value.trim();
+  if (!key) { $('#skey').focus(); return; }
+  store.set('apikey', key); drawKey(); $('#snote').hidden = true; toast('Zapisano klucz.');
+};
+$('#skey').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#keysave').click(); } });
+$('#ghedit').onclick = () => { drawGh(true); $('#ghtoken').focus(); };
+$('#ghcancel').onclick = () => drawGh();
+$('#ghsave').onclick = () => {
+  if (applySync()) sync.start({ full: true });
+  drawGh(); drawSync(); toast('Zapisano.');
+};
+$('#smodel').onchange = () => { store.set('llm', $('#smodel').value); toast(`Model: ${shortModel($('#smodel').value)}`); };
+
 function openSettings(note) {
   const dlg = $('#settings');
   $('#snote').hidden = !note;
   $('#snote').textContent = note || '';
-  $('#skey').value = store.get('apikey', '');
   $('#smodel').value = currentModel();
-  $('#ghtoken').value = store.get('ghtoken', '');
-  $('#ghrepo').value = store.get('ghrepo', '');
-  $('#ghrepo').placeholder = DEFAULT_REPO;
-  drawSync();
-  renderCostLog();
-  dlg.returnValue = '';
-  dlg.onclose = () => {
-    if (dlg.returnValue !== 'ok') return;
-    const key = $('#skey').value.trim();
-    if (key) store.set('apikey', key); else store.del('apikey');
-    store.set('llm', $('#smodel').value);
-    if (applySync()) sync.start({ full: true });
-    toast('Zapisano ustawienia.');
-  };
+  drawKey(); drawGh(); drawSync(); renderCostLog();
   dlg.showModal();
   if (note) $('#skey').focus();
 }
@@ -678,7 +767,7 @@ function drawSync() {
 
 // Saves the token and repo fields; a change starts the first sync from scratch.
 function applySync() {
-  const token = $('#ghtoken').value.trim();
+  const token = $('#ghtoken').value.trim() || store.get('ghtoken', '');
   const repo = $('#ghrepo').value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, '');
   const changed = token !== store.get('ghtoken', '') || repo !== store.get('ghrepo', '');
   if (token) store.set('ghtoken', token); else store.del('ghtoken');
@@ -687,7 +776,6 @@ function applySync() {
   return changed;
 }
 $('#syncnow').onclick = async () => {
-  applySync();
   await sync.start({ full: true });
   drawSync();
 };
@@ -699,6 +787,11 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('pagehide', () => sync.flush());
 addEventListener('online', () => sync.start({ full: true }));
 drawSync();
+
+// A tap on the backdrop closes a sheet, except the manual form, where it would lose typed values.
+for (const id of ['#settings', '#compare', '#ai']) {
+  $(id).addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close('cancel'); });
+}
 
 // --- start ------------------------------------------------------------------------
 loadDay();
