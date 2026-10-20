@@ -7,6 +7,7 @@ Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cel
   - **Ręcznie**: wartości z etykiety (bez API). „Ostatnio jedzone” wypełnia formularz czymś z ostatnich dwóch tygodni.
   - **Opisz**: opis po polsku i opcjonalnie waga porcji. Claude podaje wartości na 100 g z tabel USDA / IŻŻ, a w sieci szuka tylko produktów markowych i nieznanych dań (najwyżej 2 wyszukania). Danie z listą składników („owsianka z bananem, skyrem”) to jedna pozycja.
   - **Zdjęcie**: zdjęcie posiłku, opcjonalnie opis i waga. Zdjęcie jest zmniejszane do 1024 px przed wysłaniem.
+- Ołówek przy pozycji z AI → „Porównaj z innym modelem”: to samo zapytanie idzie do wybranego modelu, obie odpowiedzi stoją obok siebie, „Użyj nowych wartości” podmienia pozycję. Przy zdjęciu działa tylko w tej samej sesji (zdjęcie nie jest zapisywane).
 - Wynik pojawia się od razu jako wiersz ze znaczkiem ładowania i zastępuje go w miejscu. „Cofnij” usuwa wynik, ołówek otwiera edycję.
 - Koszty: ⋯ → „Wydane w tym miesiącu” pokazuje 50 ostatnich zapytań z tokenami wejścia/wyjścia, liczbą wyszukań i kosztem. `test.html` (link pod listą) porównuje modele na tych samych przykładach.
 - Waga i talia: jedna linijka na dzień, pod podsumowaniem. Pokazuje średnią wagi z 7 dni i zmianę względem poprzedniego tygodnia oraz zmianę talii.

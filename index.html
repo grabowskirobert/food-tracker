@@ -123,6 +123,7 @@
     </div>
     <p class="hint">Znasz tylko sumy dania (np. z menu)? Wpisz 100 g i sumy w polach „/ 100 g”. Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania.</p>
     <label id="mnoterow">Notatka <textarea id="mnote" rows="3"></textarea></label>
+    <button type="button" class="chip wide" id="mcompare" hidden>Porównaj z innym modelem</button>
     <div class="actions">
       <button value="cancel" formnovalidate>Anuluj</button>
       <button value="ok" class="primary" id="msubmit">Dodaj</button>
@@ -131,33 +132,62 @@
 </dialog>
 
 <dialog id="settings" class="sheet">
-  <form method="dialog">
-    <h2>Ustawienia</h2>
+  <form method="dialog" id="sform">
+    <header class="shead">
+      <h2>Ustawienia</h2>
+      <button value="cancel" class="icon close" aria-label="Zamknij" autofocus>×</button>
+    </header>
     <p class="hint" id="snote" hidden></p>
-    <label>Klucz API Anthropic
-      <input id="skey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
-    </label>
-    <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków.</p>
+
+    <div class="field">
+      <span class="flabel">Klucz API Anthropic</span>
+      <div class="fview" id="keyview"><code id="keyshow"></code><button type="button" class="chip" id="keyedit">Zmień</button></div>
+      <div class="fedit" id="keyform" hidden>
+        <input id="skey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Klucz API Anthropic">
+        <div class="actions"><button type="button" id="keycancel">Anuluj</button><button type="button" class="primary" id="keysave">Zapisz</button></div>
+      </div>
+      <p class="hint">Klucz zostaje tylko w tej przeglądarce i trafia wyłącznie do api.anthropic.com. Użyj osobnego klucza z miesięcznym limitem wydatków.</p>
+    </div>
+
     <label>Model <select id="smodel"></select></label>
     <details class="costs">
       <summary id="scost"></summary>
       <ul id="slog" class="rows small"></ul>
       <p class="hint"><a href="test.html">Porównaj modele na przykładach</a></p>
     </details>
-    <label>Token GitHub (kopia danych)
-      <input id="ghtoken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
-    </label>
-    <label>Repo z danymi <input id="ghrepo" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-    <p class="hint" id="syncstat"></p>
+
+    <div class="field">
+      <span class="flabel">Kopia danych w GitHub</span>
+      <div class="fview" id="ghview"><span id="ghshow"></span><button type="button" class="chip" id="ghedit">Zmień</button></div>
+      <div class="fedit" id="ghform" hidden>
+        <input id="ghtoken" type="password" autocomplete="off" spellcheck="false" placeholder="Token: github_pat_…" aria-label="Token GitHub">
+        <input id="ghrepo" autocomplete="off" spellcheck="false" autocapitalize="off" aria-label="Repo z danymi">
+        <div class="actions"><button type="button" id="ghcancel">Anuluj</button><button type="button" class="primary" id="ghsave">Zapisz</button></div>
+      </div>
+      <p class="hint" id="syncstat"></p>
+    </div>
     <div class="actions wrap">
       <button type="button" id="syncnow">Synchronizuj teraz</button>
       <button type="button" id="sexport">Eksportuj</button>
       <button type="button" id="simport">Importuj</button>
       <input type="file" id="sfile" accept="application/json,.json" hidden>
     </div>
+  </form>
+</dialog>
+
+<dialog id="compare" class="sheet">
+  <form method="dialog">
+    <header class="shead">
+      <h2>Porównaj modele</h2>
+      <button value="cancel" class="icon close" aria-label="Zamknij" autofocus>×</button>
+    </header>
+    <p class="hint" id="cqtext"></p>
+    <div class="chips" id="cmodels" role="radiogroup" aria-label="Model do porównania"></div>
+    <div id="cout" class="cmp"></div>
+    <p class="hint" id="cstat"></p>
     <div class="actions">
-      <button value="cancel">Zamknij</button>
-      <button value="ok" class="primary">Zapisz</button>
+      <button type="button" id="crun" class="primary">Sprawdź</button>
+      <button type="button" id="cuse" class="primary" hidden>Użyj nowych wartości</button>
     </div>
   </form>
 </dialog>
