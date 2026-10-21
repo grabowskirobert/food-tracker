@@ -30,7 +30,7 @@ const newId = () => Date.now() + Math.random();
 let cur = noon(new Date());
 let day;
 const photos = new Map(); // lookup id → photo sent, kept for this session only (too big for storage)
-const pending = []; // lookups in flight: { id, dayKey, text, grams, image, step, err, ctl, timer }
+const pending = []; // lookups in flight: { id, dayKey, text, image, step, err, ctl, timer }
 
 // A plan food as a logged item: plan values carry no source page.
 const planItem = (id, g) => {
@@ -318,17 +318,16 @@ function openAi(photo) {
   q.value = photo ? '' : store.get('draft', '');
   $('#aiimg').hidden = !photo;
   if (photo) $('#aiimg').src = shot.url;
-  $('#qg').value = '';
   $('#aihint').textContent = photo
-    ? 'Podaj wagę, jeśli ważyłeś porcję. Bez niej porcja jest szacowana ze zdjęcia.'
-    : 'Kilka rzeczy oddziel przecinkami. Danie z listą składników („owsianka z bananem, skyrem”) liczy się jako jedna pozycja.';
+    ? 'Wagę wpisz w opisie, jeśli ważyłeś porcję (np. „kurczak z ryżem 350 g”). Bez niej porcja jest szacowana ze zdjęcia.'
+    : 'Gramy wpisuj przy produkcie, kilka rzeczy oddziel przecinkami. Danie z listą składników („owsianka z bananem, skyrem”) liczy się jako jedna pozycja.';
   dlg.returnValue = '';
   dlg.onclose = () => {
     const ok = dlg.returnValue === 'ok';
-    const text = q.value.trim(), grams = num($('#qg').value), file = shot?.file;
+    const text = q.value.trim(), file = shot?.file;
     if (ok && (text || file)) {
       if (!file) store.del('draft');
-      startLookup({ text, grams, file });
+      startLookup({ text, file });
     }
     if (shot) { URL.revokeObjectURL(shot.url); shot = null; }
   };
@@ -350,7 +349,7 @@ q.addEventListener('keydown', (e) => {
 // run side by side, and a result always lands on the day it was started for.
 const STEPS = ['Liczę wartości…', 'Sprawdzam źródło…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
 const plPos = (n) => (n === 1 ? '1 pozycję' : n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14) ? `${n} pozycje` : `${n} pozycji`);
-const lookupLabel = (p) => [p.file ? 'Zdjęcie' : '', p.text, p.grams ? `${fmt(p.grams)} g` : ''].filter(Boolean).join(' · ');
+const lookupLabel = (p) => [p.file ? 'Zdjęcie' : '', p.text].filter(Boolean).join(' · ');
 
 function pendingRow(p) {
   const st = h('span', {}, p.err || STEPS[p.step]);
@@ -366,8 +365,8 @@ function pendingRow(p) {
     h('small', { class: 'meta' }, p.err ? null : h('i', { class: 'spin' }), st));
 }
 
-function startLookup({ text, grams, file }) {
-  const p = { id: newId(), dayKey: keyOf(cur), text, grams, file, step: 0, err: '' };
+function startLookup({ text, file }) {
+  const p = { id: newId(), dayKey: keyOf(cur), text, file, step: 0, err: '' };
   pending.push(p);
   runLookup(p);
   renderItems();
@@ -385,7 +384,7 @@ async function runLookup(p) {
   const model = currentModel();
   try {
     p.image ??= p.file ? await photoForApi(p.file) : null;
-    const res = await analyze({ apiKey: store.get('apikey', ''), model, text: p.text, grams: p.grams, image: p.image, signal: p.ctl.signal });
+    const res = await analyze({ apiKey: store.get('apikey', ''), model, text: p.text, image: p.image, signal: p.ctl.signal });
     logCost(model, lookupLabel(p), res);
     if (p.image) photos.set(p.id, p.image);
     finishLookup(p, res.items, model);
@@ -405,7 +404,7 @@ async function runLookup(p) {
 function finishLookup(p, items, model) {
   clearInterval(p.timer);
   pending.splice(pending.indexOf(p), 1);
-  const added = toItems(items, { lid: p.id, q: { text: p.text, grams: p.grams, photo: !!p.file }, m: model });
+  const added = toItems(items, { lid: p.id, q: { text: p.text, photo: !!p.file }, m: model });
   addItemsToDay(p.dayKey, added);
   if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => removeItemsFromDay(p.dayKey, added.map((it) => it.id)));
