@@ -234,9 +234,6 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 
 /* AI sheet */
 .shot { width: 100%; max-height: 34vh; object-fit: cover; border-radius: 12px; background: var(--track); }
-.sheet label.gline { flex-direction: row; align-items: center; justify-content: space-between; color: var(--fg); font-size: .95rem; }
-.sheet label.gline span { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.sheet label.gline input { width: 8.5rem; text-align: right; }
 .recent { display: grid; gap: 6px; }
 .recent small { font-size: .8rem; }
 .recent .chips button { color: var(--fg); }
