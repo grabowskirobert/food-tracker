@@ -787,6 +787,26 @@ addEventListener('pagehide', () => sync.flush());
 addEventListener('online', () => sync.start({ full: true }));
 drawSync();
 
+// iOS keeps the layout viewport at full height when the keyboard opens, so a sheet pinned to its bottom edge
+// ends up behind the keyboard. While the keyboard is up, pin the open sheet to the bottom of the visible
+// area instead and cap its height to it; without a keyboard the sheet keeps its normal CSS.
+function fitSheet(dlg) {
+  const vv = window.visualViewport;
+  if (!vv || !dlg.open) return;
+  if (window.innerHeight - vv.height < 100) {
+    for (const p of ['top', 'bottom', 'max-height']) dlg.style.removeProperty(p);
+    return;
+  }
+  dlg.style.top = 'auto';
+  dlg.style.bottom = `${Math.max(0, window.innerHeight - vv.offsetTop - vv.height)}px`;
+  dlg.style.maxHeight = `${Math.floor(vv.height - 8)}px`;
+}
+const showModal = HTMLDialogElement.prototype.showModal;
+HTMLDialogElement.prototype.showModal = function () { showModal.call(this); fitSheet(this); };
+const fitSheets = () => document.querySelectorAll('dialog.sheet[open]').forEach(fitSheet);
+window.visualViewport?.addEventListener('resize', fitSheets);
+window.visualViewport?.addEventListener('scroll', fitSheets);
+
 // A tap on the backdrop closes a sheet, except the manual form, where it would lose typed values.
 for (const id of ['#settings', '#compare', '#ai']) {
   $(id).addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close('cancel'); });
