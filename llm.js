@@ -56,7 +56,7 @@ const SAVE_TOOL = {
               enum: ['fish', 'legumes', 'red_meat', 'sweet', 'none'],
               description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, tofu, edamame (soy milk is none); red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); sweet: cakes, cookies, pastries with sugar, candy, chocolate, bars, ice cream, sweetened fizzy drinks, syrups (fruit, 100% juice and plain dairy are none); none: everything else',
             },
-            category_grams: NUM('Grams of THIS item that really belong to its category, as eaten. Equals grams for a plain product. For a plate or dish with sides, only the weight of the meat, fish, legumes or sweet part (e.g. a 390 g dinner of beef patties with potatoes and salad: about 120 g of meat). 0 when the category is none.'),
+            category_grams: NUM('Grams of THIS item that really belong to its category, as eaten. Equals grams for a plain product. For a dish cooked together, only the weight of the meat, fish, legumes or sweet part (e.g. 150 g of pasta with salmon and pesto: about 40 g of salmon). A plate is split into separate items, so its category_grams equals its grams. 0 when the category is none.'),
             veg_fruit_g: NUM('Grams of vegetables and fruit in 100 g of this food: 100 for a plain vegetable or fruit, 0 for none, in between for a dish (potatoes, legumes, juice and dried fruit do not count)'),
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "USDA", "IŻŻ", "Open Food Facts", "etykieta", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },
@@ -70,7 +70,10 @@ const SAVE_TOOL = {
 
 const SYSTEM = `You convert a meal description, a photo of a meal, or both into nutrition data for a personal food log. The user has high LDL cholesterol, so saturated fat must be accurate.
 
-What was eaten: either separate foods ("2 jajka, banan, skyr") or one dish whose ingredients follow its name after "z"/"ze" or in a list ("owsianka z bananem, skyrem, borówkami"). Return one item per separate food, and one item for a whole dish, never one per ingredient. From a photo, recognise the foods on the plate the same way.
+What was eaten: separate foods ("2 jajka, banan, skyr"), a plate, or a dish cooked together.
+- A plate is a main (meat, fish, patties, cutlet) served with sides (potatoes, rice, groats, salad, "surówka", sauce, bread): return one item for the main and one for each side, so the meat has its own grams. Split the portion weight plausibly ("bitki ok. 150 g, ziemniaki 150 g, surówka 80 g") and say how in "note".
+- A dish cooked together (zapiekana owsianka z bananem, makaron z łososiem i pesto, bigos, gulasz, kanapka) is one item named for the dish, never one per ingredient. If its category food is only part of it (the salmon in a pasta), set category_grams to that part.
+From a photo, recognise the foods on the plate the same way.
 
 Amount eaten: if the user gives the weight of the portion, use it (several foods: split it plausibly and say how in "note"). Otherwise convert pieces, spoons, slices and packages to grams, or estimate the portion from the photo, and say how in "note" (e.g. "2 szt. × 60 g").
 
@@ -78,7 +81,7 @@ Values per 100 g, for the form eaten (raw, dry or cooked):
 - Generic foods and common dishes: give the values from your knowledge of USDA FoodData Central and the Polish IŻŻ tables, without searching. source_name "USDA" or "IŻŻ", source_url "".
 - Search the web only for a named brand or packaged product, or a dish you do not know. Search at most twice; one reliable page is enough (the manufacturer's label, a shop listing, Open Food Facts). Put that page in source_url.
 - For a dish, assume a typical recipe with the ingredients the user named, compute the values per 100 g of the finished dish, set veg_fruit_g to its share of vegetables and fruit, and list the main ingredient amounts in "note".
-- A plate that mixes the category food with sides (meat with potatoes and salad): still one item, but set category_grams to the weight of the meat (or fish, legumes) alone, cooked weight as eaten, and say in "note" how you split it.
+- Weights are as eaten (cooked), including category_grams.
 - If a word looks like a typo of a common food ("midgały" = migdały, almonds), assume the common food and say so in "note"; never pick an exotic reading.
 - Name any estimated value in "note"; if the whole item is estimated, source_name "szacunek".
 

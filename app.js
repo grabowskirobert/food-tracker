@@ -1,4 +1,4 @@
-import { FOODS, PLANS, TARGETS, WEEK, TIPS, OVER_HINT } from './data.js';
+import { FOODS, PLANS, TARGETS, WEEK, TIPS, OVER_HINT, catOf, ruleCat, suspect, needsShare } from './data.js';
 import { analyze, friendlyError, photoForApi, MODELS } from './llm.js';
 import { createSync, DEFAULT_REPO } from './sync.js';
 
@@ -97,10 +97,10 @@ function weekTotals() {
     const dd = keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null);
     if (!dd) continue;
     const eaten = eatenOn(dd).filter(([, g]) => g > 0);
-    if (eaten.some(([f]) => f.cat === 'fish')) w.fish++;
-    if (eaten.some(([f]) => f.cat === 'legumes')) w.legumes++;
-    w.red_meat += eaten.filter(([f]) => f.cat === 'red_meat').reduce((sum, [f, g]) => sum + g * (f.cs > 0 ? f.cs : 1), 0);
-    w.sweet += eaten.filter(([f]) => f.cat === 'sweet').length;
+    if (eaten.some(([f]) => catOf(f) === 'fish')) w.fish++;
+    if (eaten.some(([f]) => catOf(f) === 'legumes')) w.legumes++;
+    w.red_meat += eaten.filter(([f]) => catOf(f) === 'red_meat').reduce((sum, [f, g]) => sum + g * (f.cs > 0 ? f.cs : 1), 0);
+    w.sweet += eaten.filter(([f]) => catOf(f) === 'sweet').length;
   }
   return w;
 }
@@ -205,7 +205,8 @@ function itemRow(it, { onGrams, onDelete, onEdit }) {
     const v = nutr(it, it.g);
     rk.textContent = `${fmt(v.k)} kcal`;
     meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
-      + (CATS[it.cat] ? ` · ${CATS[it.cat]}${it.cs > 0 ? ` (${fmt(it.g * it.cs)} g)` : ''}` : ''));
+      + (CATS[catOf(it)] ? ` · ${CATS[catOf(it)]}${it.cs > 0 ? ` (${fmt(it.g * it.cs)} g)` : ''}` : ''));
+    if (needsShare(it)) meta.append(' · ', h('span', { class: 'chk' }, 'całość liczona jako mięso: ✎ podaj gramy samego mięsa'));
     // The link shows the site, not the model's long source description (that stays in the tooltip).
     if (/^https?:\/\//.test(it.url || '')) meta.append(' · ', h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', title: it.src || '' }, hostOf(it.url)));
     else if (it.src && it.src !== 'szacunek') meta.append(' · ', it.src.slice(0, 40));
@@ -215,7 +216,8 @@ function itemRow(it, { onGrams, onDelete, onEdit }) {
   const note = it.note ? h('small', { class: 'note', title: 'Dotknij, żeby rozwinąć', onclick: (e) => e.currentTarget.classList.toggle('open') }, it.note) : null;
   return h('li', { class: 'item' },
     h('div', { class: 'ihead' },
-      h('span', { class: 'iname' }, it.n, it.src === 'szacunek' ? h('em', { class: 'est' }, 'szacunek') : null),
+      h('span', { class: 'iname' }, it.n, it.src === 'szacunek' ? h('em', { class: 'est' }, 'szacunek') : null,
+        suspect(it) ? h('em', { class: 'est', title: 'Wartości na 100 g wyglądają niemożliwie: ' + suspect(it) }, 'sprawdź') : null),
       onEdit ? h('button', { type: 'button', class: 'icon edit', 'aria-label': 'Edytuj: ' + it.n, onclick: onEdit }, '✎') : null,
       onDelete ? h('button', { type: 'button', class: 'icon del', 'aria-label': 'Usuń: ' + it.n, onclick: onDelete }, '×') : null),
     meta, note,
@@ -440,7 +442,7 @@ const shareOf = (x) => {
 const toItems = (items, extra) => items.map((x) => ({
     id: newId(), n: x.name, g: Math.round(x.grams),
     k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
-    cat: x.category === 'none' ? '' : x.category, ...shareOf(x), vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
+    cat: x.category === 'none' ? ruleCat(x.name) : x.category, ...shareOf(x), vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
 }));
 
 function addItemsToDay(dayKey, items) {
@@ -482,7 +484,7 @@ $('#manualbtn').onclick = () => openItemDialog(null);
 
 // Category chips (no native picker: a <select> inside a sheet opened misplaced on iOS).
 const catBox = $('#mcat');
-const setCat = (v) => { for (const b of catBox.children) b.setAttribute('aria-checked', String(b.dataset.v === (v || ''))); $('#mcgrow').hidden = !v; };
+const setCat = (v) => { v = v === 'none' ? '' : v || ''; for (const b of catBox.children) b.setAttribute('aria-checked', String(b.dataset.v === v)); $('#mcgrow').hidden = !v; };
 const getCat = () => [...catBox.children].find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.v || '';
 catBox.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setCat(b.dataset.v); };
 
@@ -515,7 +517,7 @@ function openItemDialog(editing) {
     for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
     $('#mg').value = f.g || '';
     $('#mvf').value = vfShare(f.vf) || '';
-    setCat(f.cat || '');
+    setCat(catOf(f));
     $('#mcg').value = f.cs > 0 ? Math.round(f.cs * f.g) : '';
   };
   const recent = editing ? [] : recentItems();
@@ -534,7 +536,7 @@ function openItemDialog(editing) {
     if (dlg.returnValue !== 'ok') return;
     const n = $('#mn').value.trim();
     if (!n) return;
-    const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: getCat() };
+    const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: getCat() || 'none' };
     // Grams of the category food within the portion (a plate of beef and potatoes): stored as a share so it scales with the portion.
     const cg = num($('#mcg').value);
     vals.cs = vals.cat && cg > 0 && cg < vals.g ? Math.round(cg / vals.g * 100) / 100 : undefined;
@@ -689,7 +691,7 @@ $('#sfull').onclick = async () => {
     const items = eatenOn(d).filter(([, g]) => g > 0).map(([f, g]) => {
       const v = nutr(f, g); addTo(t, v);
       return { n: f.n, g, k: Math.round(v.k), p: r1(v.p), f: r1(v.f), s: r1(v.s), b: r1(v.b), sl: f.sl == null ? null : r1(v.sl),
-        ...(f.cat ? { cat: f.cat } : {}), ...(f.cs > 0 ? { cg: Math.round(g * f.cs) } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
+        ...(catOf(f) ? { cat: catOf(f) } : {}), ...(f.cs > 0 ? { cg: Math.round(g * f.cs) } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
     });
     return { date: k.slice(4), w: d.w ?? null, t: d.t ?? null,
       total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), vf: Math.round(t.vf) }, items };

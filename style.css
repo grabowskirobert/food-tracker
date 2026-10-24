@@ -305,3 +305,4 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .metric, .bars, .src, .src > div, .src > div > span { min-width: 0; }
 .src, .src small { overflow-wrap: anywhere; }
 .src > div { align-items: baseline; }
+.chk { color: var(--bad); }

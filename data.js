@@ -51,10 +51,39 @@ export const TIPS = [
   ['Masło → oliwa lub olej rzepakowy', '10 g masła to ok. 5 g nasyconych, 10 g oliwy ok. 1 g. Dotyczy jajecznicy, tostów i kanapek.'],
   ['Serek śmietankowy → twaróg, skyr, hummus', '70 g Almette to ok. 12 g nasyconych, czyli ponad połowa dziennego limitu 19 g.'],
   ['Słodycze: najwyżej 2 porcje w tygodniu', 'Ciasta, ciastka, batony, czekolada, słodkie napoje. „Bez cukru” nie obniża tłuszczu ani kcal: cynamonka na ksylitolu to nadal 340–540 kcal.'],
-  ['Wołowina najwyżej raz w tygodniu', 'Razem z wędlinami limit to 500 g tygodniowo. Na obiad w tygodniu częściej ryba, kurczak, strączkowe.'],
+  ['Wołowina najwyżej raz w tygodniu', 'NCEŻ: czerwone mięso razem z wędlinami najwyżej 500 g tygodniowo (źródło nie mówi, czy to waga surowa; aplikacja liczy wagę zjedzoną). Na obiad częściej ryba, kurczak, strączkowe.'],
 ];
 // Shown next to the red marker on a metric that is over its limit.
 export const OVER_HINT = {
   s: 'Najczęściej: masło, serek śmietankowy, ciasta i słodycze, wołowina, tłuste sery.',
   sl: 'Najczęściej: wędliny, sery, pieczywo, gotowe sosy i pesto. Suma jest zaniżona, jeśli którejś pozycji brakuje soli.',
 };
+
+// Category by name, applied when no category is stored (the model said "none", or an old item has none).
+// Deterministic backstop for the model: it never overrides a stored category except for the VETO cases.
+const RULES = [
+  ['sweet', /ciast|ciacho|ciastk|czekolad|baton|cukierk|żelk|lody\b|lód|wafel|pączek|drożdżówk|cynamonk|sernik|brownie|muffin|donut|chałw|ptasie mleczko|mirinda|fanta|sprite|coca|cola\b|pepsi|oranżad|nektar|syrop/i],
+  ['red_meat', /wołow|wieprzow|schab|szynk|kiełbas|boczek|karkówk|parówk|salami|pasztet|baranin|cielęcin|bitk|zraz|polędwic|żeberk|kabanos|mortadel|golonk|stek\b|burger|kebab/i],
+  ['fish', /łosoś|łosos|dorsz|tuńczyk|śledź|śledz|makrel|sardyn|pstrąg|mintaj|halibut|sandacz|szprot|krewetk|\bryb/i],
+  ['legumes', /soczewic|ciecierzyc|fasol|groch|tofu|hummus|edamame|\bbób/i],
+];
+// Poultry in the name turns a cold cut or burger into non-red meat; soy drinks and green beans are not legumes; juice is not a sweet.
+const VETO = { red_meat: /indyk|kurczak|drób|drobi|kaczk|gęś/i, legumes: /mleko|napój|jogurt|sos sojow|szparagow|zielon/i, sweet: /\bsok\b|soku|owoc(owy|e|ów)?\b.*\bmus\b|^mus owocowy/i };
+export function ruleCat(name = '') {
+  for (const [cat, re] of RULES) if (re.test(name) && !VETO[cat]?.test(name)) return cat;
+  return '';
+}
+// Effective category: a stored one wins, 'none' means the user said "other", an empty one falls back to the name rules.
+export const catOf = (it) => (it.cat === 'none' ? '' : it.cat && !(VETO[it.cat]?.test(it.n || '') && it.cat === 'legumes') ? it.cat : ruleCat(it.n));
+
+// Values per 100 g that cannot be right: flagged in the list so the item gets checked, never silently changed.
+export function suspect(it) {
+  const k = +it.k || 0, p = +it.p || 0, f = +it.f || 0, s = +it.s || 0;
+  if (s > f + 0.5) return 'nasycone > tłuszcz';
+  if (p + f > 100.5) return 'białko + tłuszcz > 100 g';
+  if (k > 900) return 'kcal > 900 / 100 g';
+  if (k > 0 && k < 0.85 * (4 * p + 9 * f) - 5) return 'kcal za niskie wobec białka i tłuszczu';
+  return '';
+}
+// A mixed plate counted whole as red meat: asks for the grams of meat alone.
+export const needsShare = (it) => catOf(it) === 'red_meat' && !(it.cs > 0) && /ziemniak|surówk|ryż|kasz|makaron|frytk|sałat|warzyw|sos\b|z (ryżem|kasz)/i.test(it.n || '');
