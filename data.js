@@ -44,4 +44,17 @@ export const PLANS = {
 export const TARGETS = {"kcal": [2250, 2550], "protein": [110], "satpct": [7], "fibre": [25, 40], "vf": [400], "salt": [5]};
 
 // Per week (NCEŻ, lesson 1): fish 2×, legumes 2–3× (days eaten), red meat and cold cuts together ≤ 500 g.
-export const WEEK = { fish: 2, legumes: 2, red_meat: 500 };
+export const WEEK = { fish: 2, legumes: 2, red_meat: 500, sweet: 2 };
+
+// "Co zmienić": short rules shown in the app, from the log of 18–24.10 (saturated fat averaged 34 g/day against a 19 g limit).
+export const TIPS = [
+  ['Masło → oliwa lub olej rzepakowy', '10 g masła to ok. 5 g nasyconych, 10 g oliwy ok. 1 g. Dotyczy jajecznicy, tostów i kanapek.'],
+  ['Serek śmietankowy → twaróg, skyr, hummus', '70 g Almette to ok. 12 g nasyconych, czyli ponad połowa dziennego limitu 19 g.'],
+  ['Słodycze: najwyżej 2 porcje w tygodniu', 'Ciasta, ciastka, batony, czekolada, słodkie napoje. „Bez cukru” nie obniża tłuszczu ani kcal: cynamonka na ksylitolu to nadal 340–540 kcal.'],
+  ['Wołowina najwyżej raz w tygodniu', 'Razem z wędlinami limit to 500 g tygodniowo. Na obiad w tygodniu częściej ryba, kurczak, strączkowe.'],
+];
+// Shown next to the red marker on a metric that is over its limit.
+export const OVER_HINT = {
+  s: 'Najczęściej: masło, serek śmietankowy, ciasta i słodycze, wołowina, tłuste sery.',
+  sl: 'Najczęściej: wędliny, sery, pieczywo, gotowe sosy i pesto. Suma jest zaniżona, jeśli którejś pozycji brakuje soli.',
+};

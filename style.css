@@ -289,3 +289,16 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .cmp th { color: var(--muted); font-weight: 500; border-top: 0; }
 .cmp td.n { text-align: left; white-space: normal; padding-left: 0; min-width: 7rem; }
 #cstat { display: flex; align-items: center; gap: 6px; }
+
+/* marker on a metric over its limit, and the list of its sources */
+.alert { margin-left: 8px; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 0; background: var(--bad); color: #fff; font-size: .72rem; font-weight: 700; line-height: 18px; vertical-align: 1px; }
+.alert[aria-expanded="true"] { outline: 2px solid color-mix(in srgb, var(--bad) 40%, transparent); outline-offset: 2px; }
+.src { display: grid; gap: 4px; margin: 8px 0 4px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--bad) 8%, transparent); font-size: .8rem; }
+.src > div { display: flex; justify-content: space-between; gap: 10px; }
+.src > div > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src b { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.src small { color: var(--muted); font-size: .75rem; }
+.tips ul { list-style: none; margin: 0; padding: 0 16px 8px; display: grid; gap: 10px; }
+.tips li { display: grid; gap: 2px; font-size: .88rem; }
+.tips li small { color: var(--muted); font-size: .78rem; line-height: 1.35; }
+#mcgrow input { margin-top: 4px; }

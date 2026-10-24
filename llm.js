@@ -41,7 +41,7 @@ const SAVE_TOOL = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'veg_fruit_g', 'source_name', 'source_url', 'note'],
+          required: ['name', 'grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'category_grams', 'veg_fruit_g', 'source_name', 'source_url', 'note'],
           properties: {
             name: { type: 'string', description: 'Polish name of the food or dish including its form, e.g. "Makaron pełnoziarnisty (ugotowany)" or "Zapiekana owsianka z bananem". For a dish this is the dish name, never a list of amounts.' },
             grams: NUM('Amount eaten, in grams'),
@@ -53,9 +53,10 @@ const SAVE_TOOL = {
             salt: NUM('Salt, g per 100 g (if only sodium is known: sodium × 2.5)'),
             category: {
               type: 'string',
-              enum: ['fish', 'legumes', 'red_meat', 'none'],
-              description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, soy, tofu; red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); none: everything else',
+              enum: ['fish', 'legumes', 'red_meat', 'sweet', 'none'],
+              description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, tofu, edamame (soy milk is none); red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); sweet: cakes, cookies, pastries with sugar, candy, chocolate, bars, ice cream, sweetened fizzy drinks, syrups (fruit, 100% juice and plain dairy are none); none: everything else',
             },
+            category_grams: NUM('Grams of THIS item that really belong to its category, as eaten. Equals grams for a plain product. For a plate or dish with sides, only the weight of the meat, fish, legumes or sweet part (e.g. a 390 g dinner of beef patties with potatoes and salad: about 120 g of meat). 0 when the category is none.'),
             veg_fruit_g: NUM('Grams of vegetables and fruit in 100 g of this food: 100 for a plain vegetable or fruit, 0 for none, in between for a dish (potatoes, legumes, juice and dried fruit do not count)'),
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "USDA", "IŻŻ", "Open Food Facts", "etykieta", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },
@@ -77,6 +78,8 @@ Values per 100 g, for the form eaten (raw, dry or cooked):
 - Generic foods and common dishes: give the values from your knowledge of USDA FoodData Central and the Polish IŻŻ tables, without searching. source_name "USDA" or "IŻŻ", source_url "".
 - Search the web only for a named brand or packaged product, or a dish you do not know. Search at most twice; one reliable page is enough (the manufacturer's label, a shop listing, Open Food Facts). Put that page in source_url.
 - For a dish, assume a typical recipe with the ingredients the user named, compute the values per 100 g of the finished dish, set veg_fruit_g to its share of vegetables and fruit, and list the main ingredient amounts in "note".
+- A plate that mixes the category food with sides (meat with potatoes and salad): still one item, but set category_grams to the weight of the meat (or fish, legumes) alone, cooked weight as eaten, and say in "note" how you split it.
+- If a word looks like a typo of a common food ("midgały" = migdały, almonds), assume the common food and say so in "note"; never pick an exotic reading.
 - Name any estimated value in "note"; if the whole item is estimated, source_name "szacunek".
 
 Then call zapisz_produkty once with all items. Names and notes in Polish. No other answer.`;

@@ -36,6 +36,11 @@
     <div class="week" id="week"></div>
   </section>
 
+  <details class="card inspo tips" id="tips" open>
+    <summary><span>Co zmienić</span><small>z Twojego tygodnia</small></summary>
+    <ul id="tiplist"></ul>
+  </details>
+
   <details class="card inspo" id="inspo">
     <summary><span>Inspiracja</span><small>jadłospis A / B</small></summary>
     <div class="seg" role="radiogroup" aria-label="Jadłospis" id="seg">
@@ -116,8 +121,10 @@
         <button type="button" role="radio" data-v="fish">ryba</button>
         <button type="button" role="radio" data-v="legumes">strączkowe</button>
         <button type="button" role="radio" data-v="red_meat">czerwone mięso</button>
+        <button type="button" role="radio" data-v="sweet">słodycze</button>
       </div>
     </div>
+    <label id="mcgrow" hidden>Z tego samego mięsa / ryby / słodyczy, g <input id="mcg" type="number" inputmode="decimal" min="0" step="any" placeholder="cała porcja"></label>
     <p class="hint">Znasz tylko sumy dania (np. z menu)? Wpisz 100 g i sumy w polach „/ 100 g”. Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania.</p>
     <label id="mnoterow">Notatka <textarea id="mnote" rows="3"></textarea></label>
     <button type="button" class="chip wide" id="mcompare" hidden>Porównaj z innym modelem</button>

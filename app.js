@@ -1,10 +1,10 @@
-import { FOODS, PLANS, TARGETS, WEEK } from './data.js';
+import { FOODS, PLANS, TARGETS, WEEK, TIPS, OVER_HINT } from './data.js';
 import { analyze, friendlyError, photoForApi, MODELS } from './llm.js';
 import { createSync, DEFAULT_REPO } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
 const NUT = ['k', 'p', 'f', 's', 'b', 'sl'];
-const CATS = { fish: 'ryba', legumes: 'strączkowe', red_meat: 'czerwone mięso / wędliny' };
+const CATS = { fish: 'ryba', legumes: 'strączkowe', red_meat: 'czerwone mięso / wędliny', sweet: 'słodycze' };
 
 // --- storage: everything lives in localStorage under "ft:" ---------------------
 const store = {
@@ -88,9 +88,9 @@ function eatenOn(d) {
   return out;
 }
 
-// Monday–Sunday week of the shown day: days with fish, days with legumes, grams of red meat.
+// Monday–Sunday week of the shown day: days with fish, days with legumes, grams of red meat (only the meat share `cs` of a mixed plate), count of sweets.
 function weekTotals() {
-  const w = { fish: 0, legumes: 0, red_meat: 0 };
+  const w = { fish: 0, legumes: 0, red_meat: 0, sweet: 0 };
   const mon = new Date(cur); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   for (let i = 0; i < 7; i++) {
     const d = new Date(mon); d.setDate(d.getDate() + i);
@@ -99,7 +99,8 @@ function weekTotals() {
     const eaten = eatenOn(dd).filter(([, g]) => g > 0);
     if (eaten.some(([f]) => f.cat === 'fish')) w.fish++;
     if (eaten.some(([f]) => f.cat === 'legumes')) w.legumes++;
-    w.red_meat += eaten.filter(([f]) => f.cat === 'red_meat').reduce((sum, [, g]) => sum + g, 0);
+    w.red_meat += eaten.filter(([f]) => f.cat === 'red_meat').reduce((sum, [f, g]) => sum + g * (f.cs > 0 ? f.cs : 1), 0);
+    w.sweet += eaten.filter(([f]) => f.cat === 'sweet').length;
   }
   return w;
 }
@@ -118,12 +119,12 @@ const METRICS = [
   { label: 'Białko', unit: 'g', val: (t) => t.p, kind: 'min', lo: TARGETS.protein[0] },
   // The % limit applies to the whole day: early on one food's own share would show (an egg alone is ~20%),
   // so the bar tracks grams against the day's budget and the % only counts once the day reaches the kcal target.
-  { label: 'Nasycone', unit: 'g', val: (t) => t.s, kind: 'max', hi: SAT_BUDGET,
+  { label: 'Nasycone', key: 's', unit: 'g', val: (t) => t.s, kind: 'max', hi: SAT_BUDGET,
     bad: (t) => t.s >= SAT_BUDGET || (t.k >= TARGETS.kcal[0] && satPct(t) >= TARGETS.satpct[0]),
     dec: 1, extra: (t) => (t.k >= TARGETS.kcal[0] ? `${fmt(satPct(t), 1)}% kcal` : null) },
   { label: 'Błonnik', unit: 'g', val: (t) => t.b, kind: 'min', lo: TARGETS.fibre[0] },
   { label: 'Warzywa i owoce', unit: 'g', val: (t) => t.vf, kind: 'min', lo: TARGETS.vf[0] },
-  { label: 'Sól', unit: 'g', val: (t) => t.sl, kind: 'max', hi: TARGETS.salt[0], dec: 1, bad: (t) => t.sl >= TARGETS.salt[0],
+  { label: 'Sól', key: 'sl', unit: 'g', val: (t) => t.sl, kind: 'max', hi: TARGETS.salt[0], dec: 1, bad: (t) => t.sl >= TARGETS.salt[0],
     extra: (t) => (t.nosl ? `bez danych: ${t.nosl} poz.` : null) },
 ];
 
@@ -164,6 +165,11 @@ function renderDate() {
   $('#next').disabled = diff <= 0;
 }
 
+// "Co zmienić": fixed rules, collapsible; the open state is remembered.
+$('#tiplist').replaceChildren(...TIPS.map(([title, text]) => h('li', {}, h('b', {}, title), h('small', {}, text))));
+$('#tips').open = store.get('tipsopen', true);
+$('#tips').addEventListener('toggle', () => store.set('tipsopen', $('#tips').open));
+
 // Inspiration: the A/B menus as a reference; "Dodaj" logs a whole meal as separate items.
 let inspoPlan = store.get('inspo', 'A');
 function renderInspo() {
@@ -199,7 +205,7 @@ function itemRow(it, { onGrams, onDelete, onEdit }) {
     const v = nutr(it, it.g);
     rk.textContent = `${fmt(v.k)} kcal`;
     meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
-      + (CATS[it.cat] ? ` · ${CATS[it.cat]}` : ''));
+      + (CATS[it.cat] ? ` · ${CATS[it.cat]}${it.cs > 0 ? ` (${fmt(it.g * it.cs)} g)` : ''}` : ''));
     // The link shows the site, not the model's long source description (that stays in the tooltip).
     if (/^https?:\/\//.test(it.url || '')) meta.append(' · ', h('a', { href: it.url, target: '_blank', rel: 'noopener noreferrer', title: it.src || '' }, hostOf(it.url)));
     else if (it.src && it.src !== 'szacunek') meta.append(' · ', it.src.slice(0, 40));
@@ -233,6 +239,15 @@ function renderItems() {
   $('#noitems').hidden = day.items.length > 0 || here.length > 0;
 }
 
+// Items that add the most of a nutrient in the shown day, with their share of the total.
+const openSrc = new Set();
+function sourcesPanel(m, t) {
+  const top = day.items.map((it) => [it, nutr(it, it.g)[m.key]]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  return h('div', { class: 'src' },
+    ...top.map(([it, v]) => h('div', {}, h('span', {}, `${it.n} ${fmt(it.g)} g`), h('b', {}, `${fmt(v, 1)} g · ${fmt(v / t[m.key] * 100)}%`))),
+    h('small', {}, OVER_HINT[m.key]));
+}
+
 function refresh() {
   const t = totals();
   const [lo, hi] = TARGETS.kcal;
@@ -247,10 +262,16 @@ function refresh() {
     const ref = m.kind === 'min' ? m.lo : m.hi;
     const state = m.kind === 'min' ? (v >= m.lo ? 'ok' : '') : (m.bad(t) ? 'bad' : 'ok');
     const goal = m.kind === 'min' ? `≥ ${m.lo}` : `< ${m.hi}`;
+    // Over the limit: a red mark; a tap lists what the total is made of.
+    const over = m.key && state === 'bad';
+    const open = over && openSrc.has(m.key);
     return h('div', { class: 'metric' },
-      h('div', { class: 'ml' }, h('span', {}, m.label),
+      h('div', { class: 'ml' },
+        h('span', {}, m.label, over ? h('button', { type: 'button', class: 'alert', 'aria-expanded': String(open), 'aria-label': `${m.label}: ponad limit, pokaż skąd`,
+          onclick: () => { openSrc.has(m.key) ? openSrc.delete(m.key) : openSrc.add(m.key); refresh(); } }, '!') : null),
         h('span', {}, h('b', {}, fmt(v, m.dec || 0)), ` / ${goal} ${m.unit}`, m.extra?.(t) ? h('small', {}, ` · ${m.extra(t)}`) : null)),
-      bar(v / ref, state));
+      bar(v / ref, state),
+      open ? sourcesPanel(m, t) : null);
   }));
   kcalBar.classList.add('kbar');
 
@@ -258,7 +279,8 @@ function refresh() {
   const wk = (label, v, goal, max) => h('span', { class: max ? (v > goal ? 'bad' : 'ok') : (v >= goal ? 'ok' : '') },
     label, ' ', h('b', {}, fmt(v)), max ? ` / ${goal} g` : `/${goal}`);
   $('#week').replaceChildren(h('small', {}, 'Ten tydzień'),
-    wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true));
+    wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true),
+    h('span', { class: w.sweet > WEEK.sweet ? 'bad' : 'ok' }, 'Słodycze ', h('b', {}, fmt(w.sweet)), ` / ${WEEK.sweet}`));
 
   $('#xk').textContent = day.items.length ? `${fmt(t.k)} kcal` : '';
 }
@@ -409,11 +431,16 @@ function finishLookup(p, items, model) {
   if (p.dayKey === keyOf(cur)) $('#items').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   toast(`Dodano ${plPos(added.length)}`, 'Cofnij', () => removeItemsFromDay(p.dayKey, added.map((it) => it.id)));
 }
+// Share of an item that is its category food (a mixed plate); nothing stored for a plain product.
+const shareOf = (x) => {
+  const cs = x.category !== 'none' && x.category_grams > 0 && x.grams > 0 ? Math.min(1, x.category_grams / x.grams) : 1;
+  return cs < 0.99 ? { cs: Math.round(cs * 100) / 100 } : {};
+};
 // lid ties the items of one lookup together; q is what was asked, m the model that answered.
 const toItems = (items, extra) => items.map((x) => ({
     id: newId(), n: x.name, g: Math.round(x.grams),
     k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
-    cat: x.category === 'none' ? '' : x.category, vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
+    cat: x.category === 'none' ? '' : x.category, ...shareOf(x), vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
 }));
 
 function addItemsToDay(dayKey, items) {
@@ -455,7 +482,7 @@ $('#manualbtn').onclick = () => openItemDialog(null);
 
 // Category chips (no native picker: a <select> inside a sheet opened misplaced on iOS).
 const catBox = $('#mcat');
-const setCat = (v) => { for (const b of catBox.children) b.setAttribute('aria-checked', String(b.dataset.v === (v || ''))); };
+const setCat = (v) => { for (const b of catBox.children) b.setAttribute('aria-checked', String(b.dataset.v === (v || ''))); $('#mcgrow').hidden = !v; };
 const getCat = () => [...catBox.children].find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.v || '';
 catBox.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setCat(b.dataset.v); };
 
@@ -489,6 +516,7 @@ function openItemDialog(editing) {
     $('#mg').value = f.g || '';
     $('#mvf').value = vfShare(f.vf) || '';
     setCat(f.cat || '');
+    $('#mcg').value = f.cs > 0 ? Math.round(f.cs * f.g) : '';
   };
   const recent = editing ? [] : recentItems();
   $('#mrecent').hidden = !recent.length;
@@ -507,6 +535,9 @@ function openItemDialog(editing) {
     const n = $('#mn').value.trim();
     if (!n) return;
     const vals = { n, g: num($('#mg').value), vf: Math.min(100, num($('#mvf').value)), cat: getCat() };
+    // Grams of the category food within the portion (a plate of beef and potatoes): stored as a share so it scales with the portion.
+    const cg = num($('#mcg').value);
+    vals.cs = vals.cat && cg > 0 && cg < vals.g ? Math.round(cg / vals.g * 100) / 100 : undefined;
     // An empty salt field means "unknown" (flagged in the day's salt bar), not zero.
     for (const c of NUT) vals[c] = c === 'sl' && $(MF.sl).value === '' ? undefined : num($(MF[c]).value);
     if (editing) {
@@ -658,7 +689,7 @@ $('#sfull').onclick = async () => {
     const items = eatenOn(d).filter(([, g]) => g > 0).map(([f, g]) => {
       const v = nutr(f, g); addTo(t, v);
       return { n: f.n, g, k: Math.round(v.k), p: r1(v.p), f: r1(v.f), s: r1(v.s), b: r1(v.b), sl: f.sl == null ? null : r1(v.sl),
-        ...(f.cat ? { cat: f.cat } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
+        ...(f.cat ? { cat: f.cat } : {}), ...(f.cs > 0 ? { cg: Math.round(g * f.cs) } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
     });
     return { date: k.slice(4), w: d.w ?? null, t: d.t ?? null,
       total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), vf: Math.round(t.vf) }, items };
