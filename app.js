@@ -647,6 +647,37 @@ $('#sexport').onclick = async () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
+// Full export: every stored day as readable JSON (items with nutrients, day totals, weight, waist),
+// copied to the clipboard so it can be pasted into a chat; the file is the fallback.
+$('#sfull').onclick = async () => {
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const days = store.keys('day:').sort().map((k) => {
+    const d = k === 'day:' + keyOf(cur) ? day : store.get(k, null);
+    if (!d) return null;
+    const t = zero();
+    const items = eatenOn(d).filter(([, g]) => g > 0).map(([f, g]) => {
+      const v = nutr(f, g); addTo(t, v);
+      return { n: f.n, g, k: Math.round(v.k), p: r1(v.p), f: r1(v.f), s: r1(v.s), b: r1(v.b), sl: f.sl == null ? null : r1(v.sl),
+        ...(f.cat ? { cat: f.cat } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
+    });
+    return { date: k.slice(4), w: d.w ?? null, t: d.t ?? null,
+      total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), vf: Math.round(t.vf) }, items };
+  }).filter(Boolean);
+  const text = JSON.stringify({ exported: keyOf(new Date()), targets: TARGETS, days });
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`Skopiowano ${days.length} dni (${Math.ceil(text.length / 1024)} KB). Wklej w czacie.`);
+    return;
+  } catch { /* clipboard blocked: fall back to a file */ }
+  const name = `food-tracker-pelny-${keyOf(new Date())}.json`;
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return; } catch (err) { if (err.name === 'AbortError') return; }
+  }
+  const a = h('a', { href: URL.createObjectURL(file), download: name });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 $('#simport').onclick = () => $('#sfile').click();
 $('#sfile').onchange = async (e) => {
   const file = e.target.files[0];
