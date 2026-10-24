@@ -664,19 +664,22 @@ $('#sfull').onclick = async () => {
       total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), vf: Math.round(t.vf) }, items };
   }).filter(Boolean);
   const text = JSON.stringify({ exported: keyOf(new Date()), targets: TARGETS, days });
+  // The settings dialog is modal, so the toast would sit behind it: report on the button itself.
+  const btn = $('#sfull'), label = 'Pełny eksport';
+  const say = (msg) => { btn.textContent = msg; setTimeout(() => { btn.textContent = label; }, 4000); };
   try {
     await navigator.clipboard.writeText(text);
-    toast(`Skopiowano ${days.length} dni (${Math.ceil(text.length / 1024)} KB). Wklej w czacie.`);
+    say(`Skopiowano: ${days.length} dni ✓`);
     return;
-  } catch { /* clipboard blocked: fall back to a file */ }
-  const name = `food-tracker-pelny-${keyOf(new Date())}.json`;
-  const file = new File([text], name, { type: 'application/json' });
-  if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: name }); return; } catch (err) { if (err.name === 'AbortError') return; }
+  } catch { /* clipboard blocked: show the text to copy by hand */ }
+  let box = $('#sfulltext');
+  if (!box) {
+    box = h('textarea', { id: 'sfulltext', readonly: true, rows: 6, 'aria-label': 'Pełny eksport do skopiowania' });
+    btn.parentElement.after(box);
   }
-  const a = h('a', { href: URL.createObjectURL(file), download: name });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  box.value = text;
+  box.focus(); box.select();
+  say('Zaznacz i skopiuj ↓');
 };
 $('#simport').onclick = () => $('#sfile').click();
 $('#sfile').onchange = async (e) => {
