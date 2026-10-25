@@ -40,35 +40,35 @@ export const PLANS = {
   ] }
 };
 
-// kcal [min, max], protein [min], satpct [max % of energy], fibre [min, max], vf [min g], salt [max g] (NCEŻ).
-export const TARGETS = {"kcal": [2250, 2550], "protein": [110], "satpct": [7], "fibre": [25, 40], "vf": [400], "salt": [5]};
+// kcal [min, max], protein [min], satpct [max % of energy], sugarpct [max % of energy, free sugars], fibre [min, max], vf [min g], salt [max g] (NCEŻ).
+export const TARGETS = {"kcal": [2250, 2550], "protein": [110], "satpct": [7], "sugarpct": [10], "fibre": [25, 40], "vf": [400], "salt": [5]};
 
 // Per week (NCEŻ, lesson 1): fish 2×, legumes 2–3× (days eaten), red meat and cold cuts together ≤ 500 g.
-export const WEEK = { fish: 2, legumes: 2, red_meat: 500, sweet: 2 };
+export const WEEK = { fish: 2, legumes: 2, red_meat: 500 };
 
 // "Co zmienić": short rules shown in the app, from the log of 18–24.10 (saturated fat averaged 34 g/day against a 19 g limit).
 export const TIPS = [
   ['Masło → oliwa lub olej rzepakowy', '10 g masła to ok. 5 g nasyconych, 10 g oliwy ok. 1 g. Dotyczy jajecznicy, tostów i kanapek.'],
   ['Serek śmietankowy → twaróg, skyr, hummus', '70 g Almette to ok. 12 g nasyconych, czyli ponad połowa dziennego limitu 19 g.'],
-  ['Słodycze: najwyżej 2 porcje w tygodniu', 'Ciasta, ciastka, batony, czekolada, słodkie napoje. „Bez cukru” nie obniża tłuszczu ani kcal: cynamonka na ksylitolu to nadal 340–540 kcal.'],
+  ['Cukier dodany poniżej 10% energii (ok. 60 g)', 'Liczy się cukier, syropy, miód i sok, nie cukier z owocu czy mleka. „Bez cukru” na ksylitolu nie obniża tłuszczu ani kcal: cynamonka to nadal 340–540 kcal.'],
   ['Wołowina najwyżej raz w tygodniu', 'NCEŻ: czerwone mięso razem z wędlinami najwyżej 500 g tygodniowo (źródło nie mówi, czy to waga surowa; aplikacja liczy wagę zjedzoną). Na obiad częściej ryba, kurczak, strączkowe.'],
 ];
 // Shown next to the red marker on a metric that is over its limit.
 export const OVER_HINT = {
   s: 'Najczęściej: masło, serek śmietankowy, ciasta i słodycze, wołowina, tłuste sery.',
+  su: 'Najczęściej: ciasta, ciastka, batony, słodzone napoje, syropy i miód, sok owocowy.',
   sl: 'Najczęściej: wędliny, sery, pieczywo, gotowe sosy i pesto. Suma jest zaniżona, jeśli którejś pozycji brakuje soli.',
 };
 
 // Category by name, applied when no category is stored (the model said "none", or an old item has none).
 // Deterministic backstop for the model: it never overrides a stored category except for the VETO cases.
 const RULES = [
-  ['sweet', /ciast|ciacho|ciastk|czekolad|baton|cukierk|żelk|lody\b|lód|wafel|pączek|drożdżówk|cynamonk|sernik|brownie|muffin|donut|chałw|ptasie mleczko|mirinda|fanta|sprite|coca|cola\b|pepsi|oranżad|nektar|syrop/i],
   ['red_meat', /wołow|wieprzow|schab|szynk|kiełbas|boczek|karkówk|parówk|salami|pasztet|baranin|cielęcin|bitk|zraz|polędwic|żeberk|kabanos|mortadel|golonk|stek\b|burger|kebab/i],
   ['fish', /łosoś|łosos|dorsz|tuńczyk|śledź|śledz|makrel|sardyn|pstrąg|mintaj|halibut|sandacz|szprot|krewetk|\bryb/i],
   ['legumes', /soczewic|ciecierzyc|fasol|groch|tofu|hummus|edamame|\bbób/i],
 ];
-// Poultry in the name turns a cold cut or burger into non-red meat; soy drinks and green beans are not legumes; juice is not a sweet.
-const VETO = { red_meat: /indyk|kurczak|drób|drobi|kaczk|gęś/i, legumes: /mleko|napój|jogurt|sos sojow|szparagow|zielon/i, sweet: /\bsok\b|soku|owoc(owy|e|ów)?\b.*\bmus\b|^mus owocowy/i };
+// Poultry in the name turns a cold cut or burger into non-red meat; soy drinks and green beans are not legumes.
+const VETO = { red_meat: /indyk|kurczak|drób|drobi|kaczk|gęś/i, legumes: /mleko|napój|jogurt|sos sojow|szparagow|zielon/i };
 export function ruleCat(name = '') {
   for (const [cat, re] of RULES) if (re.test(name) && !VETO[cat]?.test(name)) return cat;
   return '';
@@ -82,6 +82,7 @@ export function suspect(it) {
   if (s > f + 0.5) return 'nasycone > tłuszcz';
   if (p + f > 100.5) return 'białko + tłuszcz > 100 g';
   if (k > 900) return 'kcal > 900 / 100 g';
+  if (it.su > 100) return 'cukier dodany > 100 g / 100 g';
   if (k > 0 && k < 0.85 * (4 * p + 9 * f) - 5) return 'kcal za niskie wobec białka i tłuszczu';
   return '';
 }

@@ -3,8 +3,8 @@ import { analyze, friendlyError, photoForApi, MODELS } from './llm.js';
 import { createSync, DEFAULT_REPO } from './sync.js';
 
 const $ = (s) => document.querySelector(s);
-const NUT = ['k', 'p', 'f', 's', 'b', 'sl'];
-const CATS = { fish: 'ryba', legumes: 'strączkowe', red_meat: 'czerwone mięso / wędliny', sweet: 'słodycze' };
+const NUT = ['k', 'p', 'f', 's', 'b', 'sl', 'su'];
+const CATS = { fish: 'ryba', legumes: 'strączkowe', red_meat: 'czerwone mięso / wędliny' };
 
 // --- storage: everything lives in localStorage under "ft:" ---------------------
 const store = {
@@ -35,7 +35,7 @@ const pending = []; // lookups in flight: { id, dayKey, text, image, step, err, 
 // A plan food as a logged item: plan values carry no source page.
 const planItem = (id, g) => {
   const f = FOODS[id];
-  return { id: newId(), n: f.n, g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, vf: f.vf, cat: f.cat || '', src: 'jadłospis' };
+  return { id: newId(), n: f.n, g, k: f.k, p: f.p, f: f.f, s: f.s, b: f.b, sl: f.sl, su: 0, vf: f.vf, cat: f.cat || '', src: 'jadłospis' };
 };
 
 // Every day is a plain list of items. Days saved while the A/B plans were a day mode are converted
@@ -68,13 +68,13 @@ function saveDay() {
 // bread, in between for a dish. Older records hold true/false.
 const vfShare = (v) => (v === true ? 100 : Number(v) || 0);
 function nutr(f, g) {
-  // nosl counts items saved before salt was tracked, so the salt total can say it is incomplete.
-  const v = { vf: vfShare(f.vf) * g / 100, nosl: f.sl == null && g > 0 ? 1 : 0 };
+  // nosl / nosu count items saved before salt / added sugar was tracked, so those totals can say they are incomplete.
+  const v = { vf: vfShare(f.vf) * g / 100, nosl: f.sl == null && g > 0 ? 1 : 0, nosu: f.su == null && g > 0 ? 1 : 0 };
   for (const c of NUT) v[c] = (f[c] || 0) * g / 100;
   return v;
 }
-function addTo(t, v) { for (const c of [...NUT, 'vf', 'nosl']) t[c] += v[c]; }
-const zero = () => ({ k: 0, p: 0, f: 0, s: 0, b: 0, sl: 0, vf: 0, nosl: 0 });
+function addTo(t, v) { for (const c of [...NUT, 'vf', 'nosl', 'nosu']) t[c] += v[c]; }
+const zero = () => ({ k: 0, p: 0, f: 0, s: 0, b: 0, sl: 0, su: 0, vf: 0, nosl: 0, nosu: 0 });
 
 // Everything eaten on a stored day. Days not yet shown since the plans stopped being a day mode
 // may still hold a plan; their plan meals count until the day is converted.
@@ -88,9 +88,9 @@ function eatenOn(d) {
   return out;
 }
 
-// Monday–Sunday week of the shown day: days with fish, days with legumes, grams of red meat (only the meat share `cs` of a mixed plate), count of sweets.
+// Monday–Sunday week of the shown day: days with fish, days with legumes, grams of red meat (only the meat share `cs` of a mixed plate), 
 function weekTotals() {
-  const w = { fish: 0, legumes: 0, red_meat: 0, sweet: 0 };
+  const w = { fish: 0, legumes: 0, red_meat: 0 };
   const mon = new Date(cur); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   for (let i = 0; i < 7; i++) {
     const d = new Date(mon); d.setDate(d.getDate() + i);
@@ -100,7 +100,6 @@ function weekTotals() {
     if (eaten.some(([f]) => catOf(f) === 'fish')) w.fish++;
     if (eaten.some(([f]) => catOf(f) === 'legumes')) w.legumes++;
     w.red_meat += eaten.filter(([f]) => catOf(f) === 'red_meat').reduce((sum, [f, g]) => sum + g * (f.cs > 0 ? f.cs : 1), 0);
-    w.sweet += eaten.filter(([f]) => catOf(f) === 'sweet').length;
   }
   return w;
 }
@@ -115,6 +114,10 @@ const satPct = (t) => (t.k ? t.s * 9 / t.k * 100 : 0);
 // 7% of the middle of the kcal range, in grams (2400 kcal → 19 g).
 const SAT_BUDGET = Math.round(TARGETS.satpct[0] / 100 * (TARGETS.kcal[0] + TARGETS.kcal[1]) / 2 / 9);
 
+// WHO / NCEŻ: free sugars under 10% of energy, 4 kcal per gram. The budget in grams is taken at the middle of the kcal range (2400 kcal → 60 g).
+const SUGAR_BUDGET = Math.round(TARGETS.sugarpct[0] / 100 * (TARGETS.kcal[0] + TARGETS.kcal[1]) / 2 / 4);
+const sugarPct = (t) => (t.k ? t.su * 4 / t.k * 100 : 0);
+
 const METRICS = [
   { label: 'Białko', unit: 'g', val: (t) => t.p, kind: 'min', lo: TARGETS.protein[0] },
   // The % limit applies to the whole day: early on one food's own share would show (an egg alone is ~20%),
@@ -122,6 +125,9 @@ const METRICS = [
   { label: 'Nasycone', key: 's', unit: 'g', val: (t) => t.s, kind: 'max', hi: SAT_BUDGET,
     bad: (t) => t.s >= SAT_BUDGET || (t.k >= TARGETS.kcal[0] && satPct(t) >= TARGETS.satpct[0]),
     dec: 1, extra: (t) => (t.k >= TARGETS.kcal[0] ? `${fmt(satPct(t), 1)}% kcal` : null) },
+  { label: 'Cukier dodany', key: 'su', unit: 'g', val: (t) => t.su, kind: 'max', hi: SUGAR_BUDGET, dec: 1,
+    bad: (t) => t.su >= SUGAR_BUDGET || (t.k >= TARGETS.kcal[0] && sugarPct(t) >= TARGETS.sugarpct[0]),
+    extra: (t) => [t.k >= TARGETS.kcal[0] ? `${fmt(sugarPct(t), 1)}% kcal` : null, t.nosu ? `bez danych: ${t.nosu} poz.` : null].filter(Boolean).join(' · ') || null },
   { label: 'Błonnik', unit: 'g', val: (t) => t.b, kind: 'min', lo: TARGETS.fibre[0] },
   { label: 'Warzywa i owoce', unit: 'g', val: (t) => t.vf, kind: 'min', lo: TARGETS.vf[0] },
   { label: 'Sól', key: 'sl', unit: 'g', val: (t) => t.sl, kind: 'max', hi: TARGETS.salt[0], dec: 1, bad: (t) => t.sl >= TARGETS.salt[0],
@@ -204,7 +210,7 @@ function itemRow(it, { onGrams, onDelete, onEdit }) {
   const upd = () => {
     const v = nutr(it, it.g);
     rk.textContent = `${fmt(v.k)} kcal`;
-    meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)}`
+    meta.replaceChildren(`B ${fmt(v.p, 1)} · T ${fmt(v.f, 1)} · nas. ${fmt(v.s, 1)} · bł. ${fmt(v.b, 1)} · sól ${it.sl == null ? '?' : fmt(v.sl, 1)} · cukier dod. ${it.su == null ? '?' : fmt(v.su, 1)}`
       + (CATS[catOf(it)] ? ` · ${CATS[catOf(it)]}${it.cs > 0 ? ` (${fmt(it.g * it.cs)} g)` : ''}` : ''));
     if (needsShare(it)) meta.append(' · ', h('span', { class: 'chk' }, 'całość liczona jako mięso: ✎ podaj gramy samego mięsa'));
     // The link shows the site, not the model's long source description (that stays in the tooltip).
@@ -281,8 +287,7 @@ function refresh() {
   const wk = (label, v, goal, max) => h('span', { class: max ? (v > goal ? 'bad' : 'ok') : (v >= goal ? 'ok' : '') },
     label, ' ', h('b', {}, fmt(v)), max ? ` / ${goal} g` : `/${goal}`);
   $('#week').replaceChildren(h('small', {}, 'Ten tydzień'),
-    wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true),
-    h('span', { class: w.sweet > WEEK.sweet ? 'bad' : 'ok' }, 'Słodycze ', h('b', {}, fmt(w.sweet)), ` / ${WEEK.sweet}`));
+    wk('Ryba', w.fish, WEEK.fish), wk('Strączkowe', w.legumes, WEEK.legumes), wk('Czerwone mięso', w.red_meat, WEEK.red_meat, true));
 
   $('#xk').textContent = day.items.length ? `${fmt(t.k)} kcal` : '';
 }
@@ -441,7 +446,7 @@ const shareOf = (x) => {
 // lid ties the items of one lookup together; q is what was asked, m the model that answered.
 const toItems = (items, extra) => items.map((x) => ({
     id: newId(), n: x.name, g: Math.round(x.grams),
-    k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt,
+    k: x.kcal, p: x.protein, f: x.fat, s: x.saturated_fat, b: x.fibre, sl: x.salt, su: x.free_sugar,
     cat: x.category === 'none' ? ruleCat(x.name) : x.category, ...shareOf(x), vf: x.veg_fruit_g, url: x.source_url, src: x.source_name, note: x.note, ...extra,
 }));
 
@@ -479,7 +484,7 @@ function renderCostLog() {
 }
 
 // --- add by hand / edit an item ----------------------------------------------------
-const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl' };
+const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl', su: '#msu' };
 $('#manualbtn').onclick = () => openItemDialog(null);
 
 // Category chips (no native picker: a <select> inside a sheet opened misplaced on iOS).
@@ -540,8 +545,8 @@ function openItemDialog(editing) {
     // Grams of the category food within the portion (a plate of beef and potatoes): stored as a share so it scales with the portion.
     const cg = num($('#mcg').value);
     vals.cs = vals.cat && cg > 0 && cg < vals.g ? Math.round(cg / vals.g * 100) / 100 : undefined;
-    // An empty salt field means "unknown" (flagged in the day's salt bar), not zero.
-    for (const c of NUT) vals[c] = c === 'sl' && $(MF.sl).value === '' ? undefined : num($(MF[c]).value);
+    // An empty salt or added sugar field means "unknown" (flagged in that day's bar), not zero.
+    for (const c of NUT) vals[c] = (c === 'sl' || c === 'su') && $(MF[c]).value === '' ? undefined : num($(MF[c]).value);
     if (editing) {
       Object.assign(editing, vals, { note: $('#mnote').value.trim() });
     } else {
@@ -690,11 +695,11 @@ $('#sfull').onclick = async () => {
     const t = zero();
     const items = eatenOn(d).filter(([, g]) => g > 0).map(([f, g]) => {
       const v = nutr(f, g); addTo(t, v);
-      return { n: f.n, g, k: Math.round(v.k), p: r1(v.p), f: r1(v.f), s: r1(v.s), b: r1(v.b), sl: f.sl == null ? null : r1(v.sl),
+      return { n: f.n, g, k: Math.round(v.k), p: r1(v.p), f: r1(v.f), s: r1(v.s), b: r1(v.b), sl: f.sl == null ? null : r1(v.sl), su: f.su == null ? null : r1(v.su),
         ...(catOf(f) ? { cat: catOf(f) } : {}), ...(f.cs > 0 ? { cg: Math.round(g * f.cs) } : {}), ...(f.src ? { src: f.src.slice(0, 40) } : {}) };
     });
     return { date: k.slice(4), w: d.w ?? null, t: d.t ?? null,
-      total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), vf: Math.round(t.vf) }, items };
+      total: { k: Math.round(t.k), p: r1(t.p), f: r1(t.f), s: r1(t.s), b: r1(t.b), sl: r1(t.sl), su: r1(t.su), vf: Math.round(t.vf) }, items };
   }).filter(Boolean);
   const text = JSON.stringify({ exported: keyOf(new Date()), targets: TARGETS, days });
   // The settings dialog is modal, so the toast would sit behind it: report on the button itself.

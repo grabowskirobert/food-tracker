@@ -41,7 +41,7 @@ const SAVE_TOOL = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['name', 'grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'category', 'category_grams', 'veg_fruit_g', 'source_name', 'source_url', 'note'],
+          required: ['name', 'grams', 'kcal', 'protein', 'fat', 'saturated_fat', 'fibre', 'salt', 'free_sugar', 'category', 'category_grams', 'veg_fruit_g', 'source_name', 'source_url', 'note'],
           properties: {
             name: { type: 'string', description: 'Polish name of the food or dish including its form, e.g. "Makaron pełnoziarnisty (ugotowany)" or "Zapiekana owsianka z bananem". For a dish this is the dish name, never a list of amounts.' },
             grams: NUM('Amount eaten, in grams'),
@@ -51,12 +51,13 @@ const SAVE_TOOL = {
             saturated_fat: NUM('Saturated fat, g per 100 g'),
             fibre: NUM('Dietary fibre, g per 100 g'),
             salt: NUM('Salt, g per 100 g (if only sodium is known: sodium × 2.5)'),
+            free_sugar: NUM('Free (added) sugars, g per 100 g, WHO definition: sugar, syrups, honey, glucose-fructose syrup added by the maker or cook, plus the sugars of honey, syrups and fruit juice. NOT the sugars naturally inside whole fruit, vegetables, plain milk, yoghurt, skyr or grains. From a label take "w tym cukry" and subtract the sugar that comes from milk or fruit when the ingredients show it; if unsure, count it all. Xylitol, erythritol and other sweeteners are not sugars. 0 for a product without added sugar.'),
             category: {
               type: 'string',
-              enum: ['fish', 'legumes', 'red_meat', 'sweet', 'none'],
-              description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, tofu, edamame (soy milk is none); red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); sweet: cakes, cookies, pastries with sugar, candy, chocolate, bars, ice cream, sweetened fizzy drinks, syrups (fruit, 100% juice and plain dairy are none); none: everything else',
+              enum: ['fish', 'legumes', 'red_meat', 'none'],
+              description: 'fish: fish and seafood; legumes: lentils, beans, chickpeas, peas, tofu, edamame (soy milk is none); red_meat: beef, pork, lamb and any cold cuts or sausages (wędliny); none: everything else',
             },
-            category_grams: NUM('Grams of THIS item that really belong to its category, as eaten. Equals grams for a plain product. For a dish cooked together, only the weight of the meat, fish, legumes or sweet part (e.g. 150 g of pasta with salmon and pesto: about 40 g of salmon). A plate is split into separate items, so its category_grams equals its grams. 0 when the category is none.'),
+            category_grams: NUM('Grams of THIS item that really belong to its category, as eaten. Equals grams for a plain product. For a dish cooked together, only the weight of the meat, fish or legumes part (e.g. 150 g of pasta with salmon and pesto: about 40 g of salmon). A plate is split into separate items, so its category_grams equals its grams. 0 when the category is none.'),
             veg_fruit_g: NUM('Grams of vegetables and fruit in 100 g of this food: 100 for a plain vegetable or fruit, 0 for none, in between for a dish (potatoes, legumes, juice and dried fruit do not count)'),
             source_name: { type: 'string', description: 'Where the numbers come from, e.g. "USDA", "IŻŻ", "Open Food Facts", "etykieta", "szacunek"' },
             source_url: { type: 'string', description: 'URL of the page the numbers were taken from, or an empty string' },
@@ -82,6 +83,7 @@ Values per 100 g, for the form eaten (raw, dry or cooked):
 - Search the web only for a named brand or packaged product, or a dish you do not know. Search at most twice; one reliable page is enough (the manufacturer's label, a shop listing, Open Food Facts). Put that page in source_url.
 - For a dish, assume a typical recipe with the ingredients the user named, compute the values per 100 g of the finished dish, set veg_fruit_g to its share of vegetables and fruit, and list the main ingredient amounts in "note".
 - Weights are as eaten (cooked), including category_grams.
+- free_sugar needs care for cakes, biscuits, bars, drinks, sauces and anything sweet: use the label or recipe, not a guess of total sugar. A home cake: estimate the sugar, honey and syrup in the recipe, and say so in "note".
 - If a word looks like a typo of a common food ("midgały" = migdały, almonds), assume the common food and say so in "note"; never pick an exotic reading.
 - Name any estimated value in "note"; if the whole item is estimated, source_name "szacunek".
 

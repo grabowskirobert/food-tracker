@@ -113,6 +113,7 @@
       <label>Nasycone / 100 g <input id="ms" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Błonnik / 100 g <input id="mb" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Sól / 100 g <input id="msl" type="number" inputmode="decimal" min="0" step="any"></label>
+      <label>Cukier dodany / 100 g <input id="msu" type="number" inputmode="decimal" min="0" step="any"></label>
       <label>Warzywa i owoce / 100 g <input id="mvf" type="number" inputmode="decimal" min="0" max="100" step="any" placeholder="0"></label>
     </div>
     <div class="catrow"><span>Kategoria</span>
@@ -121,10 +122,9 @@
         <button type="button" role="radio" data-v="fish">ryba</button>
         <button type="button" role="radio" data-v="legumes">strączkowe</button>
         <button type="button" role="radio" data-v="red_meat">czerwone mięso</button>
-        <button type="button" role="radio" data-v="sweet">słodycze</button>
       </div>
     </div>
-    <label id="mcgrow" hidden>Z tego samego mięsa / ryby / słodyczy, g <input id="mcg" type="number" inputmode="decimal" min="0" step="any" placeholder="cała porcja"></label>
+    <label id="mcgrow" hidden>Z tego samego mięsa / ryby / strączkowych, g <input id="mcg" type="number" inputmode="decimal" min="0" step="any" placeholder="cała porcja"></label>
     <p class="hint">Znasz tylko sumy dania (np. z menu)? Wpisz 100 g i sumy w polach „/ 100 g”. Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania.</p>
     <label id="mnoterow">Notatka <textarea id="mnote" rows="3"></textarea></label>
     <button type="button" class="chip wide" id="mcompare" hidden>Porównaj z innym modelem</button>

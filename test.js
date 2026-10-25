@@ -55,7 +55,7 @@ $('#run').onclick = async () => {
     out.append(h('section', { class: 'card' },
       h('h3', {}, c.text + (c.grams ? ` · ${c.grams} g` : '')),
       h('div', { class: 'scroll' }, h('table', {},
-        h('thead', {}, h('tr', {}, ['Model', 'Pozycja', 'g', 'kcal', 'B', 'T', 'nas.', 'bł.', 'sól', 'źródło', 'wej./wyj.', 'wysz.', 'czas', 'koszt'].map((x) => h('th', {}, x)))),
+        h('thead', {}, h('tr', {}, ['Model', 'Pozycja', 'g', 'kcal', 'B', 'T', 'nas.', 'bł.', 'sól', 'cukier d.', 'źródło', 'wej./wyj.', 'wysz.', 'czas', 'koszt'].map((x) => h('th', {}, x)))),
         tbody))));
     // Models run in parallel for one case; cases one after another, so the page fills in steadily.
     await Promise.all(models.map(async (cfg) => {
@@ -70,7 +70,7 @@ $('#run').onclick = async () => {
         r.items.forEach((x, i) => tbody.append(h('tr', { class: i ? '' : 'first' },
           h('td', {}, i ? '' : short), h('td', { title: x.note }, x.name), h('td', {}, fmt(x.grams)), h('td', {}, fmt(x.kcal)),
           h('td', {}, fmt(x.protein, 1)), h('td', {}, fmt(x.fat, 1)), h('td', {}, fmt(x.saturated_fat, 1)), h('td', {}, fmt(x.fibre, 1)),
-          h('td', {}, fmt(x.salt, 2)), h('td', { title: x.source_url }, x.source_name),
+          h('td', {}, fmt(x.salt, 2)), h('td', {}, fmt(x.free_sugar, 1)), h('td', { title: x.source_url }, x.source_name),
           h('td', {}, i ? '' : `${fmt(r.usage.in / 1000, 1)}k / ${fmt(r.usage.out / 1000, 1)}k`), h('td', {}, i ? '' : String(r.usage.searches)),
           h('td', {}, i ? '' : `${fmt(ms / 1000, 0)} s`), h('td', {}, i ? '' : usd(r.cost)))));
       } catch (err) {
