@@ -74,7 +74,8 @@ export function createSync({ store, focusMonths, onStatus, onRemote }) {
 
   async function getFile(path) {
     const res = await gh(file(path));
-    if (res.status === 404) return null;
+    // A repo without any commit answers 409 instead of 404; either way the file does not exist yet.
+    if (res.status === 404 || res.status === 409) return null;
     if (!res.ok) throw new SyncError('other', `GitHub ${res.status} przy odczycie ${path}.`);
     const f = await res.json();
     if (f.encoding !== 'base64') throw new SyncError('other', `Plik ${path} jest za duży do odczytu.`);
