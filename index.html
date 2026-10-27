@@ -53,7 +53,7 @@
   <section class="eaten">
     <h2>Zjedzone <span id="xk"></span></h2>
     <ul id="items" class="rows"></ul>
-    <p class="empty" id="noitems">Nic jeszcze nie dodano. Wybierz niżej, jak dodać posiłek.</p>
+    <p class="empty" id="noitems">Nic jeszcze nie dodano. Opisz posiłek albo zrób zdjęcie.</p>
   </section>
 
   <section class="card body">
@@ -66,10 +66,6 @@
 </main>
 
 <nav class="dock" aria-label="Dodaj posiłek">
-  <button type="button" id="manualbtn">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
-    <span>Ręcznie</span>
-  </button>
   <button type="button" id="aibtn" class="main">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.9L19 9.5l-5.2 1.6L12 16l-1.8-4.9L5 9.5l5.2-1.6zM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
     <span>Opisz</span>
@@ -99,11 +95,7 @@
 
 <dialog id="manual" class="sheet">
   <form method="dialog" id="mform">
-    <h2 id="mtitle">Dodaj ręcznie</h2>
-    <div id="mrecent" class="recent" hidden>
-      <small>Ostatnio jedzone</small>
-      <div class="chips" id="mrecentlist"></div>
-    </div>
+    <h2>Edytuj pozycję</h2>
     <label>Nazwa <input id="mn" required autocomplete="off" autocapitalize="sentences"></label>
     <div class="grid">
       <label>Zjedzone, g <input id="mg" type="number" inputmode="decimal" min="0" step="any" required></label>
@@ -126,11 +118,11 @@
     </div>
     <label id="mcgrow" hidden>Z tego samego mięsa / ryby / strączkowych, g <input id="mcg" type="number" inputmode="decimal" min="0" step="any" placeholder="cała porcja"></label>
     <p class="hint">Znasz tylko sumy dania (np. z menu)? Wpisz 100 g i sumy w polach „/ 100 g”. Warzywa i owoce: 100 dla owocu lub warzywa, 0 dla reszty, wartość pośrednia dla dania.</p>
-    <label id="mnoterow">Notatka <textarea id="mnote" rows="3"></textarea></label>
+    <label>Notatka <textarea id="mnote" rows="3"></textarea></label>
     <button type="button" class="chip wide" id="mcompare" hidden>Porównaj z innym modelem</button>
     <div class="actions">
       <button value="cancel" formnovalidate>Anuluj</button>
-      <button value="ok" class="primary" id="msubmit">Dodaj</button>
+      <button value="ok" class="primary">Zapisz</button>
     </div>
   </form>
 </dialog>

@@ -51,7 +51,7 @@ const SAVE_TOOL = {
             saturated_fat: NUM('Saturated fat, g per 100 g'),
             fibre: NUM('Dietary fibre, g per 100 g'),
             salt: NUM('Salt, g per 100 g (if only sodium is known: sodium × 2.5)'),
-            free_sugar: NUM('Free (added) sugars, g per 100 g, WHO definition: sugar, syrups, honey, glucose-fructose syrup added by the maker or cook, plus the sugars of honey, syrups and fruit juice. NOT the sugars naturally inside whole fruit, vegetables, plain milk, yoghurt, skyr or grains. From a label take "w tym cukry" and subtract the sugar that comes from milk or fruit when the ingredients show it; if unsure, count it all. Xylitol, erythritol and other sweeteners are not sugars. 0 for a product without added sugar.'),
+            free_sugar: NUM('Free (added) sugars, g per 100 g, WHO definition: sugar, syrups, honey, glucose-fructose syrup added by the maker or cook, plus the sugars of honey, syrups and fruit juice. NOT the sugars naturally inside whole fruit, vegetables, grains, or the lactose of milk, yoghurt, kefir, skyr, quark and other dairy (lactose is never free sugar). Plain dairy without sweetener: 0. From a label take "w tym cukry" and subtract the sugar that comes from milk (about 3.5–4.5 g lactose per 100 g of skyr, yoghurt, kefir, milk; 3 g in quark) or from whole fruit when the ingredients show it; count the rest. If unsure for a non-dairy product, count it all. Xylitol, erythritol and other sweeteners are not sugars. 0 for a product without added sugar.'),
             category: {
               type: 'string',
               enum: ['fish', 'legumes', 'red_meat', 'none'],
@@ -83,6 +83,7 @@ Values per 100 g, for the form eaten (raw, dry or cooked):
 - Search the web only for a named brand or packaged product, or a dish you do not know. Search at most twice; one reliable page is enough (the manufacturer's label, a shop listing, Open Food Facts). Put that page in source_url.
 - For a dish, assume a typical recipe with the ingredients the user named, compute the values per 100 g of the finished dish, set veg_fruit_g to its share of vegetables and fruit, and list the main ingredient amounts in "note".
 - Weights are as eaten (cooked), including category_grams.
+- free_sugar: lactose from dairy never counts (a plain skyr, yoghurt, milk, kefir or cottage cheese has 0); in a flavoured dairy product count only sugar, honey, syrup or fruit preparation added on top of the milk's lactose.
 - free_sugar needs care for cakes, biscuits, bars, drinks, sauces and anything sweet: use the label or recipe, not a guess of total sugar. A home cake: estimate the sugar, honey and syrup in the recipe, and say so in "note".
 - If a word looks like a typo of a common food ("midgały" = migdały, almonds), assume the common food and say so in "note"; never pick an exotic reading.
 - Name any estimated value in "note"; if the whole item is estimated, source_name "szacunek".

@@ -483,9 +483,8 @@ function renderCostLog() {
     h('span', { class: 'rk' }, usd(x.cost)))) : [h('li', { class: 'empty' }, 'Brak zapytań.')]));
 }
 
-// --- add by hand / edit an item ----------------------------------------------------
+// --- edit an item ------------------------------------------------------------------
 const MF = { n: '#mn', g: '#mg', k: '#mk', p: '#mp', f: '#mf', s: '#ms', b: '#mb', sl: '#msl', su: '#msu' };
-$('#manualbtn').onclick = () => openItemDialog(null);
 
 // Category chips (no native picker: a <select> inside a sheet opened misplaced on iOS).
 const catBox = $('#mcat');
@@ -493,46 +492,17 @@ const setCat = (v) => { v = v === 'none' ? '' : v || ''; for (const b of catBox.
 const getCat = () => [...catBox.children].find((b) => b.getAttribute('aria-checked') === 'true')?.dataset.v || '';
 catBox.onclick = (e) => { const b = e.target.closest('[data-v]'); if (b) setCat(b.dataset.v); };
 
-// Things eaten in the last two weeks, newest first, one per name: a tap fills the form to log it again.
-function recentItems(limit = 8) {
-  const seen = new Map();
-  for (let o = 0; o < 14 && seen.size < limit; o++) {
-    const d = new Date(); d.setDate(d.getDate() - o);
-    const dd = keyOf(d) === keyOf(cur) ? day : store.get('day:' + keyOf(d), null);
-    for (const it of [...(dd?.items || [])].reverse()) {
-      const k = it.n.toLowerCase();
-      if (!seen.has(k) && seen.size < limit) seen.set(k, it);
-    }
-  }
-  return [...seen.values()];
-}
-
-// One sheet for both: adding by hand (editing = null) and correcting an item already logged.
-// Values are per 100 g; the amount eaten is separate.
+// Corrects an item already logged. Values are per 100 g; the amount eaten is separate.
 function openItemDialog(editing) {
   const dlg = $('#manual');
-  let from = null; // a recent item the form was filled from: keeps its source and note
-  $('#mtitle').textContent = editing ? 'Edytuj pozycję' : 'Dodaj ręcznie';
-  $('#mnoterow').hidden = !editing;
-  $('#msubmit').textContent = editing ? 'Zapisz' : 'Dodaj';
   $('#mform').reset();
-  setCat('');
-
-  const fill = (f) => {
-    for (const c of ['n', ...NUT]) $(MF[c]).value = f[c] ?? '';
-    $('#mg').value = f.g || '';
-    $('#mvf').value = vfShare(f.vf) || '';
-    setCat(catOf(f));
-    $('#mcg').value = f.cs > 0 ? Math.round(f.cs * f.g) : '';
-  };
-  const recent = editing ? [] : recentItems();
-  $('#mrecent').hidden = !recent.length;
-  $('#mrecentlist').replaceChildren(...recent.map((it) => h('button', {
-    type: 'button', onclick: () => { from = it; fill(it); $('#mg').focus(); },
-  }, it.n.length > 28 ? it.n.slice(0, 27) + '…' : it.n)));
-
-  if (editing) { fill(editing); $('#mnote').value = editing.note || ''; }
-  const canCompare = !!editing?.q && (!editing.q.photo || photos.has(editing.lid));
+  for (const c of ['n', ...NUT]) $(MF[c]).value = editing[c] ?? '';
+  $('#mg').value = editing.g || '';
+  $('#mvf').value = vfShare(editing.vf) || '';
+  setCat(catOf(editing));
+  $('#mcg').value = editing.cs > 0 ? Math.round(editing.cs * editing.g) : '';
+  $('#mnote').value = editing.note || '';
+  const canCompare = !!editing.q && (!editing.q.photo || photos.has(editing.lid));
   $('#mcompare').hidden = !canCompare;
   $('#mcompare').onclick = () => { dlg.close('cancel'); openCompare(editing); };
 
@@ -547,16 +517,10 @@ function openItemDialog(editing) {
     vals.cs = vals.cat && cg > 0 && cg < vals.g ? Math.round(cg / vals.g * 100) / 100 : undefined;
     // An empty salt or added sugar field means "unknown" (flagged in that day's bar), not zero.
     for (const c of NUT) vals[c] = (c === 'sl' || c === 'su') && $(MF[c]).value === '' ? undefined : num($(MF[c]).value);
-    if (editing) {
-      Object.assign(editing, vals, { note: $('#mnote').value.trim() });
-    } else {
-      const same = from && from.n === n;
-      day.items.push({ ...vals, id: newId(), src: same ? from.src || '' : 'etykieta', url: same ? from.url || '' : '', note: same ? from.note || '' : '' });
-    }
+    Object.assign(editing, vals, { note: $('#mnote').value.trim() });
     saveDay(); render();
   };
   dlg.showModal();
-  if (!editing && !recent.length) $('#mn').focus();
 }
 
 // --- compare an AI result with another model -----------------------------------------
