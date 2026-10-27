@@ -1,8 +1,7 @@
 // Syncs the local data with a private GitHub repo through the Contents API.
 // Local-first: the app always reads and writes localStorage. This module merges per record
 // (newest `upd` wins) and pushes the difference. One file per month keeps requests few and files small:
-//   days/YYYY-MM.json  { version, days:  { "YYYY-MM-DD": day } }
-//   foods.json         { version, foods: { key: product } }
+//   days/YYYY-MM.json  { version, days: { "YYYY-MM-DD": day } }
 
 const API = 'https://api.github.com';
 export const DEFAULT_REPO = 'grabowskirobert/food-tracker-data';
@@ -36,12 +35,12 @@ export function mergeMaps(local, remote) {
 }
 
 // store: { get, set, keys(prefix) } over localStorage.
-// focusMonths(): months to pull on every full sync. onStatus(): redraw. onRemote({ days, foods }): data changed.
+// focusMonths(): months to pull on every full sync. onStatus(): redraw. onRemote({ days }): data changed.
 export function createSync({ store, focusMonths, onStatus, onRemote }) {
   let running = null, again = null, timer = null;
 
   const cfg = () => ({ token: store.get('ghtoken', ''), repo: store.get('ghrepo', '') || DEFAULT_REPO });
-  const dirtyState = () => store.get('dirty', { m: {}, foods: 0 });
+  const dirtyState = () => store.get('dirty', { m: {} });
 
   async function gh(url, init = {}) {
     const { token } = cfg();
@@ -74,7 +73,8 @@ export function createSync({ store, focusMonths, onStatus, onRemote }) {
 
   async function getFile(path) {
     const res = await gh(file(path));
-    if (res.status === 404) return null;
+    // A repo without any commit answers 409 instead of 404; either way the file does not exist yet.
+    if (res.status === 404 || res.status === 409) return null;
     if (!res.ok) throw new SyncError('other', `GitHub ${res.status} przy odczycie ${path}.`);
     const f = await res.json();
     if (f.encoding !== 'base64') throw new SyncError('other', `Plik ${path} jest za duży do odczytu.`);
@@ -123,7 +123,7 @@ export function createSync({ store, focusMonths, onStatus, onRemote }) {
     const synced = store.get('synced', {});
     const months = new Set([...Object.keys(snap.m), ...localMonths().filter((m) => !synced[m])]);
     if (full) focusMonths().forEach((m) => months.add(m));
-    const changed = { days: [], foods: false };
+    const changed = { days: [] };
 
     for (const m of [...months].sort()) {
       const pulled = await syncMap({
@@ -139,21 +139,8 @@ export function createSync({ store, focusMonths, onStatus, onRemote }) {
       if (d.m[m] === snap.m[m]) { delete d.m[m]; store.set('dirty', d); }
     }
 
-    if (full || snap.foods || !synced.foods) {
-      const pulled = await syncMap({
-        path: 'foods.json',
-        field: 'foods',
-        readLocal: () => store.get('foods', {}),
-        writeLocal: (pairs) => store.set('foods', { ...store.get('foods', {}), ...Object.fromEntries(pairs) }),
-        message: (n) => `food-tracker produkty: ${n}`,
-      });
-      changed.foods = pulled.length > 0;
-      store.set('synced', { ...store.get('synced', {}), foods: true });
-      const d = dirtyState();
-      if (d.foods === snap.foods) { d.foods = 0; store.set('dirty', d); }
-    }
     store.set('sync', { ok: Date.now(), err: '' });
-    if (changed.days.length || changed.foods) onRemote(changed);
+    if (changed.days.length) onRemote(changed);
   }
 
   // Runs one sync; calls made while one is running are folded into a single follow-up run.
@@ -183,18 +170,15 @@ export function createSync({ store, focusMonths, onStatus, onRemote }) {
   return {
     start,
     dirtyDay: (dayKey) => bump((d) => { const m = dayKey.slice(0, 7); d.m[m] = (d.m[m] || 0) + 1; }),
-    dirtyFoods: () => bump((d) => { d.foods = (d.foods || 0) + 1; }),
     // Leaving the app: push at once instead of waiting out the delay (iOS may still cut it short).
     flush() {
-      const d = dirtyState();
-      if (Object.keys(d.m).length || d.foods) start();
+      if (Object.keys(dirtyState().m).length) start();
     },
     resetSynced() { store.set('synced', {}); store.set('sync', {}); },
     status() {
       const { token } = cfg();
       const st = store.get('sync', {});
-      const d = dirtyState();
-      const dirty = Object.keys(d.m).length + (d.foods ? 1 : 0);
+      const dirty = Object.keys(dirtyState().m).length;
       const age = st.ok ? Date.now() - st.ok : Infinity;
       let state;
       if (!token) state = 'off';

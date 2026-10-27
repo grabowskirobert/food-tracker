@@ -3,8 +3,7 @@
 Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cele dzienne: 2250–2550 kcal, białko ≥ 110 g, nasycone < 19 g (7% energii), błonnik ≥ 25 g, warzywa i owoce ≥ 400 g, sól < 5 g. Tygodniowe: ryba 2×, strączkowe 2×, czerwone mięso i wędliny ≤ 500 g.
 
 - Dzień to zwykła lista „Zjedzone”. Jadłospis A/B jest w zwijanej sekcji „Inspiracja”: „+ Dodaj” przy posiłku dopisuje jego produkty do dnia. Dni zapisane jeszcze w trybie A/B zamieniają się w listę przy pierwszym otwarciu.
-- Na dole trzy sposoby dodawania:
-  - **Ręcznie**: wartości z etykiety (bez API). „Ostatnio jedzone” wypełnia formularz czymś z ostatnich dwóch tygodni.
+- Na dole dwa sposoby dodawania:
   - **Opisz**: opis po polsku i opcjonalnie waga porcji. Claude podaje wartości na 100 g z tabel USDA / IŻŻ, a w sieci szuka tylko produktów markowych i nieznanych dań (najwyżej 2 wyszukania). Danie z listą składników („owsianka z bananem, skyrem”) to jedna pozycja.
   - **Zdjęcie**: zdjęcie posiłku, opcjonalnie opis i waga. Zdjęcie jest zmniejszane do 1024 px przed wysłaniem.
 - Ołówek przy pozycji z AI → „Porównaj z innym modelem”: to samo zapytanie idzie do wybranego modelu, obie odpowiedzi stoją obok siebie, „Użyj nowych wartości” podmienia pozycję. Przy zdjęciu działa tylko w tej samej sesji (zdjęcie nie jest zapisywane).
@@ -33,7 +32,7 @@ Klucz jest zapisany tylko w `localStorage` tej aplikacji na telefonie. Nie ma go
 
 ## Kopia danych i synchronizacja
 
-Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera `days/RRRR-MM.json` (dni z posiłkami, wagą i talią) (starszy `foods.json` z „moimi produktami” nie jest już używany). Tego repo nie wolno robić publicznym.
+Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera tylko `days/RRRR-MM.json` (dni z posiłkami, wagą i talią). Tego repo nie wolno robić publicznym. Plik `foods.json` z dawnych wersji aplikacji nie jest już synchronizowany i można go z repo usunąć.
 
 1. Utwórz prywatne repo z README (puste repo też zadziała, pierwszy zapis tworzy pierwszy commit).
 2. GitHub → Settings → Developer settings → Fine-grained tokens: dostęp tylko do tego repo, uprawnienie *Contents: Read and write*, data ważności do roku.
@@ -41,7 +40,7 @@ Repo z danymi (domyślnie `grabowskirobert/food-tracker-data`, prywatne) zawiera
 
 Kiedy: przy otwarciu i powrocie do aplikacji, 30 s po ostatniej zmianie, przy wyjściu z aplikacji (iOS nie gwarantuje, że zdąży), po odzyskaniu internetu i ręcznie w ustawieniach. W tle aplikacja nie synchronizuje, bo iOS nie pozwala stronie działać po zamknięciu.
 
-Scalanie: każdy dzień i produkt ma znacznik czasu `upd`, wygrywa nowsza wersja całego dnia. Konflikt zapisu (drugie urządzenie wysłało w międzyczasie) kończy się pobraniem, scaleniem i drugą próbą. Usunięty produkt zostaje w pliku jako znacznik `del`, żeby usunięcie dotarło na drugie urządzenie. Gdy token wygaśnie, aplikacja działa dalej lokalnie, a po wklejeniu nowego tokenu wysyła zaległości.
+Scalanie: każdy dzień ma znacznik czasu `upd`, wygrywa nowsza wersja całego dnia. Konflikt zapisu (drugie urządzenie wysłało w międzyczasie) kończy się pobraniem, scaleniem i drugą próbą. Gdy token wygaśnie, aplikacja działa dalej lokalnie, a po wklejeniu nowego tokenu wysyła zaległości.
 
 ## Pliki
 
