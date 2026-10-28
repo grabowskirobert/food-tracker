@@ -374,6 +374,65 @@ q.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && q.value.trim()) { e.preventDefault(); $('#ai').close('ok'); }
 });
 
+// --- recent products ---------------------------------------------------------------
+// Every item ever logged, one entry per name (case and accents ignored), the newest version of each with the
+// grams it was last eaten at. Read from the stored days when the sheet opens, so synced days count too.
+const fold = (x) => String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/\s+/g, ' ').trim();
+function recentItems() {
+  const seen = new Map();
+  for (const k of store.keys('day:').sort().reverse()) {
+    const d = store.get(k, null);
+    for (const it of [...(d?.items || [])].reverse()) {
+      if (!it?.n || !(it.k >= 0)) continue;
+      const key = fold(it.n);
+      const e = seen.get(key);
+      if (e) e.count++; else seen.set(key, { it, key, count: 1, day: k.slice(4) });
+    }
+  }
+  return [...seen.values()];
+}
+// A copy without the ids that tie an item to its old lookup (comparing models needs the original request).
+const reuse = (it, g) => { const { id, lid, q, m, ...rest } = it; return { ...rest, id: newId(), g }; };
+
+const rq = $('#rq');
+let recent = [];
+function drawRecent() {
+  const words = fold(rq.value).split(' ').filter(Boolean);
+  const hits = recent.filter((e) => words.every((w) => e.key.includes(w))).slice(0, 40);
+  $('#rlist').replaceChildren(...hits.map(({ it, count }) => {
+    let g = Math.round(it.g) || 100;
+    const rk = h('span', { class: 'rk' });
+    const upd = () => { rk.textContent = `${fmt(nutr(it, g).k)} kcal`; };
+    upd();
+    return h('li', {},
+      h('span', { class: 'rname' }, it.n, count > 1 ? h('small', { class: 'meta' }, ` · ${count}×`) : null),
+      h('div', { class: 'rfoot' },
+        h('label', { class: 'gw' }, gramInput(g, (v) => { g = v; upd(); }, 'gramy: ' + it.n), h('span', {}, 'g')),
+        rk,
+        h('button', {
+          type: 'button', class: 'chip add',
+          onclick: () => {
+            if (!(g > 0)) return toast('Podaj gramy.');
+            const added = [reuse(it, g)];
+            const dayKey = keyOf(cur);
+            addItemsToDay(dayKey, added);
+            $('#recent').close();
+            toast(`Dodano: ${it.n}`, 'Cofnij', () => removeItemsFromDay(dayKey, added.map((x) => x.id)));
+          },
+        }, '+ Dodaj')));
+  }));
+  const none = $('#rnone');
+  none.hidden = hits.length > 0;
+  none.textContent = recent.length ? 'Nic nie pasuje.' : 'Brak historii. Dodane produkty pojawią się tutaj.';
+}
+rq.addEventListener('input', drawRecent);
+$('#recentbtn').onclick = () => {
+  recent = recentItems();
+  rq.value = '';
+  drawRecent();
+  $('#recent').showModal();
+};
+
 // A lookup appears at once as a row with a spinner and the result replaces it in place. Several can
 // run side by side, and a result always lands on the day it was started for.
 const STEPS = ['Liczę wartości…', 'Sprawdzam źródło…', 'Przeliczam porcje…', 'Jeszcze chwila…'];
@@ -844,7 +903,7 @@ window.visualViewport?.addEventListener('resize', fitSheets);
 window.visualViewport?.addEventListener('scroll', fitSheets);
 
 // A tap on the backdrop closes a sheet, except the manual form, where it would lose typed values.
-for (const id of ['#settings', '#compare', '#ai']) {
+for (const id of ['#settings', '#compare', '#ai', '#recent']) {
   $(id).addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.close('cancel'); });
 }
 

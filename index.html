@@ -66,6 +66,10 @@
 </main>
 
 <nav class="dock" aria-label="Dodaj posiłek">
+  <button type="button" id="recentbtn">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4M12 8v4.5l3 1.8"/></svg>
+    <span>Ostatnie</span>
+  </button>
   <button type="button" id="aibtn" class="main">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.9L19 9.5l-5.2 1.6L12 16l-1.8-4.9L5 9.5l5.2-1.6zM18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
     <span>Opisz</span>
@@ -90,6 +94,18 @@
       <button value="cancel" formnovalidate>Anuluj</button>
       <button value="ok" class="primary" id="aiok">Policz</button>
     </div>
+  </form>
+</dialog>
+
+<dialog id="recent" class="sheet">
+  <form method="dialog">
+    <header class="shead">
+      <h2>Ostatnie produkty</h2>
+      <button value="cancel" class="icon close" aria-label="Zamknij">×</button>
+    </header>
+    <input id="rq" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Szukaj w dotychczas dodanych…" aria-label="Szukaj produktu">
+    <ul id="rlist" class="rows"></ul>
+    <p class="empty" id="rnone" hidden></p>
   </form>
 </dialog>
 

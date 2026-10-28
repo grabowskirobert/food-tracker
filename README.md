@@ -3,7 +3,8 @@
 Dzienny dziennik jedzenia na bazie jadłospisu A/B z lekcji `teach/zdrowie`. Cele dzienne: 2250–2550 kcal, białko ≥ 110 g, nasycone < 19 g (7% energii), błonnik ≥ 25 g, warzywa i owoce ≥ 400 g, sól < 5 g. Tygodniowe: ryba 2×, strączkowe 2×, czerwone mięso i wędliny ≤ 500 g.
 
 - Dzień to zwykła lista „Zjedzone”. Jadłospis A/B jest w zwijanej sekcji „Inspiracja”: „+ Dodaj” przy posiłku dopisuje jego produkty do dnia. Dni zapisane jeszcze w trybie A/B zamieniają się w listę przy pierwszym otwarciu.
-- Na dole dwa sposoby dodawania:
+- Na dole trzy sposoby dodawania:
+  - **Ostatnie**: lista wszystkich produktów dodanych kiedykolwiek (jedna pozycja na nazwę, z ostatnio użytymi gramami) z wyszukiwarką po nazwie. Gramy można zmienić przed dodaniem; działa bez klucza API i offline.
   - **Opisz**: opis po polsku i opcjonalnie waga porcji. Claude podaje wartości na 100 g z tabel USDA / IŻŻ, a w sieci szuka tylko produktów markowych i nieznanych dań (najwyżej 2 wyszukania). Danie z listą składników („owsianka z bananem, skyrem”) to jedna pozycja.
   - **Zdjęcie**: zdjęcie posiłku, opcjonalnie opis i waga. Zdjęcie jest zmniejszane do 1024 px przed wysłaniem.
 - Ołówek przy pozycji z AI → „Porównaj z innym modelem”: to samo zapytanie idzie do wybranego modelu, obie odpowiedzi stoją obok siebie, „Użyj nowych wartości” podmienia pozycję. Przy zdjęciu działa tylko w tej samej sesji (zdjęcie nie jest zapisywane).

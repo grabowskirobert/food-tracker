@@ -125,10 +125,10 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .eaten .rows:empty { display: none; }
 .empty { color: var(--muted); font-size: .9rem; margin: 0 4px; }
 
-/* bottom dock: the two ways to add food */
+/* bottom dock: the three ways to add food */
 .dock {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
   padding: 8px 12px calc(8px + var(--safe-b));
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -303,3 +303,12 @@ input.g:focus { outline: none; border-color: var(--accent); background: var(--ca
 .src, .src small { overflow-wrap: anywhere; }
 .src > div { align-items: baseline; }
 .chk { color: var(--bad); }
+
+/* recent products sheet */
+#rq { font-size: 16px; color: var(--fg); padding: 9px 12px; border: 1px solid var(--rule); border-radius: 10px; background: var(--bg); font-family: inherit; width: 100%; box-sizing: border-box; }
+#rq:focus { outline: none; border-color: var(--accent); }
+#rlist li { display: block; padding: 10px 0; }
+#rlist .rname { display: block; font-size: .95rem; overflow-wrap: anywhere; }
+#rlist .rfoot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+#rlist .rfoot .gw { display: flex; flex-direction: row; align-items: center; gap: 4px; color: var(--muted); }
+#rlist .rfoot .rk { flex: 1; width: auto; }
